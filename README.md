@@ -93,10 +93,18 @@ their blocks; see erykczy's [colorful-glowstone](https://github.com/erykczy/colo
 
 ## Building
 
-Gradle 9 / Java 21 / ModDevGradle. The compatibility layer compiles against local jars that are **not**
-included in this repository (Sodium's license does not permit redistribution): place
-`iris-neoforge-1.8.14-beta.1+mc1.21.1.jar` in `../refmod121/`, and a Sodium 0.8.13-beta.1 implementation
-jar plus the Fabric API modules it bundles in `../compat-analysis/`, then run `gradlew build`.
+Gradle 9 / Java 21 / ModDevGradle. The compatibility layer compiles against renderer jars that are **not**
+included in this repository (Sodium's license does not permit redistribution). Create a `libs/` folder in
+the project root and put these in it:
+
+1. [Iris](https://www.curseforge.com/minecraft/mc-mods/irisshaders) `1.8.14-beta.1+mc1.21.1` (NeoForge) —
+   the downloaded jar as-is
+2. From the [Sodium](https://www.curseforge.com/minecraft/mc-mods/sodium) `0.8.13-beta.1+mc1.21.1`
+   (NeoForge) download, extract everything under `META-INF/jarjar/` inside the jar (open it as a zip):
+   the `net.caffeinemc.sodium-neoforge-...-mod.jar` implementation jar and the four bundled `fabric-*.jar`
+   API modules
+
+Then run `gradlew build`; the mod jar lands in `build/libs/`.
 
 ## License
 

@@ -123,10 +123,9 @@ configurations {
 
 dependencies {
     // Renderer jars the merged Sodium/Iris compatibility layer compiles against.
-    compileOnly files('../refmod121/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar')
-    compileOnly files('../compat-analysis/sodium-implementation.jar')
-    compileOnly fileTree('../compat-analysis') {
-        include 'fabric-*.jar'
+    // Not redistributable - see the Building section of the README for what to put here.
+    compileOnly fileTree('libs') {
+        include '*.jar'
     }
 
     // Example optional mod dependency with JEI
