@@ -33,7 +33,23 @@ public class PackedLightData {
         return packedData == 0xF0000000 || packedData == 0;
     }
 
+    /**
+     * Whether the value carries this mod's packed format (alpha nibble marker). While the
+     * CPU shader-pack fallback is active, vanilla-format values flow through the same
+     * combining helpers, and reading them as the colorful layout would produce garbage.
+     */
+    public static boolean isColorful(int packedData) {
+        return (packedData >>> 28) == 0xF;
+    }
+
     public static int blend(int lightColor0, int lightColor1, int lightColor2, int lightColor3) {
+        if(!isColorful(lightColor0) && !isColorful(lightColor1) && !isColorful(lightColor2) && !isColorful(lightColor3)) {
+            // vanilla-format inputs: replicate vanilla AmbientOcclusionFace.blend exactly
+            if (lightColor0 == 0) lightColor0 = lightColor3;
+            if (lightColor1 == 0) lightColor1 = lightColor3;
+            if (lightColor2 == 0) lightColor2 = lightColor3;
+            return lightColor0 + lightColor1 + lightColor2 + lightColor3 >> 2 & 0xFF00FF;
+        }
         if (isBlack(lightColor0)) lightColor0 = lightColor3;
         if (isBlack(lightColor1)) lightColor1 = lightColor3;
         if (isBlack(lightColor2)) lightColor2 = lightColor3;
@@ -52,6 +68,14 @@ public class PackedLightData {
     }
 
     public static int blend(int lightColor0, int lightColor1, int lightColor2, int lightColor3, float weight0, float weight1, float weight2, float weight3) {
+        if(!isColorful(lightColor0) && !isColorful(lightColor1) && !isColorful(lightColor2) && !isColorful(lightColor3)) {
+            // vanilla-format inputs: replicate vanilla's weighted blend exactly
+            int sky = (int) ((lightColor0 >> 16 & 0xFF) * weight0 + (lightColor1 >> 16 & 0xFF) * weight1
+                    + (lightColor2 >> 16 & 0xFF) * weight2 + (lightColor3 >> 16 & 0xFF) * weight3) & 0xFF;
+            int block = (int) ((lightColor0 & 0xFF) * weight0 + (lightColor1 & 0xFF) * weight1
+                    + (lightColor2 & 0xFF) * weight2 + (lightColor3 & 0xFF) * weight3) & 0xFF;
+            return sky << 16 | block;
+        }
         var data0 = unpackData(lightColor0);
         var data1 = unpackData(lightColor1);
         var data2 = unpackData(lightColor2);
@@ -66,6 +90,12 @@ public class PackedLightData {
     }
 
     public static int max(int lightColor0, int lightColor1) {
+        if(!isColorful(lightColor0) && !isColorful(lightColor1)) {
+            // vanilla-format inputs: per-component max in the vanilla layout
+            int block = Math.max((lightColor0 >>> 4) & 0xF, (lightColor1 >>> 4) & 0xF);
+            int sky = Math.max((lightColor0 >>> 20) & 0xF, (lightColor1 >>> 20) & 0xF);
+            return (block << 4) | (sky << 20);
+        }
         var firstData = unpackData(lightColor0);
         var secondData = unpackData(lightColor1);
 

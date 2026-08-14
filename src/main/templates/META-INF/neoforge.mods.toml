@@ -50,6 +50,9 @@ description='''${mod_description}'''
 [[mixins]]
 config="${mod_id}.mixins.json"
 
+[[mixins]]
+config="colorful_lighting_compat.mixins.json"
+
 # The [[accessTransformers]] block allows you to declare where your AT file is.
 # If this block is omitted, a fallback attempt will be made to load an AT from META-INF/accesstransformer.cfg
 #[[accessTransformers]]
@@ -84,6 +87,21 @@ config="${mod_id}.mixins.json"
     versionRange="${minecraft_version_range}"
     ordering="NONE"
     side="BOTH"
+
+# The merged Sodium/Iris compatibility layer targets these exact renderer versions.
+[[dependencies.${mod_id}]]
+    modId="sodium"
+    type="required"
+    versionRange="[0.8.13-beta.1,0.8.14)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.${mod_id}]]
+    modId="iris"
+    type="required"
+    versionRange="[1.8.14-beta.1,1.8.15)"
+    ordering="AFTER"
+    side="CLIENT"
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't

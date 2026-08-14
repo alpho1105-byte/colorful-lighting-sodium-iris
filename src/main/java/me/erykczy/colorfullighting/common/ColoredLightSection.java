@@ -3,11 +3,14 @@ package me.erykczy.colorfullighting.common;
 import me.erykczy.colorfullighting.common.util.ColorRGB4;
 
 /**
- * Stores light color for each block in the section
+ * Stores light color for each block in the section.
+ * One short per block (12 bits used): unlike the previous cross-byte 12-bit packing,
+ * entries never share storage units, so concurrent readers (mesh building) and the
+ * writer threads can never tear a value or clobber a neighbouring entry.
  */
 public class ColoredLightSection {
-    private static final int LAYER_SIZE = 6144; // = 16 * 16 * 16 * 1.5
-    public byte[] data;
+    private static final int ENTRY_COUNT = 16 * 16 * 16;
+    public volatile short[] data;
 
     public ColoredLightSection() {}
 
@@ -17,42 +20,27 @@ public class ColoredLightSection {
 
     public ColorRGB4 get(int x, int y, int z) { return get(getColorIndex(x, y, z)); }
     public ColorRGB4 get(int colorIndex) {
-        if(data == null)
+        short[] entries = data;
+        if(entries == null)
             return ColorRGB4.fromRGB4(0, 0, 0);
-        else  {
-            int startBit = colorIndex * 12;
-            int bitOffset = (startBit & 0x7);
-            int byteIndex = startBit >> 3;
-            int rawData = ((data[byteIndex] << 8) & 0xFFFF) | (data[byteIndex + 1] & 0xFF);
-            int offsetData = (rawData << bitOffset);
-
-            int red = (offsetData >>> 12) & 0x0F;
-            int green = (offsetData >>> 8) & 0x0F;
-            int blue = (offsetData >>> 4) & 0x0F;
-            return ColorRGB4.fromRGB4(red, green, blue);
-        }
+        int value = entries[colorIndex] & 0xFFF;
+        return ColorRGB4.fromRGB4((value >>> 8) & 0x0F, (value >>> 4) & 0x0F, value & 0x0F);
     }
 
     public void set(int x, int y, int z, ColorRGB4 value) { set(getColorIndex(x, y, z), value); }
     public void set(int colorIndex, ColorRGB4 value) {
-        if(data == null)
-            data = new byte[LAYER_SIZE];
         if(!value.isInValidState()) {
             throw new IllegalArgumentException("Invalid ColoredLightSection.Entry: "+value);
         }
-
-        int startBit = colorIndex * 12;
-        int byteIndex = startBit >> 3;
-        int bitOffset = (startBit & 0x7);
-
-        if(bitOffset == 0) { // whether startBit is divisible by 8 (this means that the color starts at the beginning of the byte)
-            data[byteIndex] = (byte) ((value.red4 << 4) | value.green4);
-            data[byteIndex + 1] = (byte) (value.blue4 << 4 | (data[byteIndex + 1] & 0x0F));
+        short[] entries = data;
+        if(entries == null) {
+            synchronized (this) {
+                if(data == null)
+                    data = new short[ENTRY_COUNT];
+                entries = data;
+            }
         }
-        else {
-            data[byteIndex] = (byte) ((data[byteIndex] & 0xF0) | value.red4);
-            data[byteIndex + 1] = (byte) ((value.green4 << 4) | value.blue4);
-        }
+        entries[colorIndex] = (short) ((value.red4 << 8) | (value.green4 << 4) | value.blue4);
     }
 
 

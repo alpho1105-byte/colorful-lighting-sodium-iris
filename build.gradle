@@ -2,7 +2,7 @@ plugins {
     id 'idea'
     id 'java-library'
     id 'maven-publish'
-    id 'net.neoforged.moddev' version '2.0.78'
+    id 'net.neoforged.moddev' version '2.0.142'
 }
 
 tasks.named('wrapper', Wrapper).configure {
@@ -48,6 +48,15 @@ neoForge {
 
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+
+            // -PtestGameDir=<dir> selects a game directory with the Sodium/Iris mod stack;
+            // -PquickPlayWorld=<world> jumps straight into a singleplayer world.
+            if (project.hasProperty('testGameDir')) {
+                gameDirectory = project.file(project.property('testGameDir'))
+            }
+            if (project.hasProperty('quickPlayWorld')) {
+                programArguments.addAll '--quickPlaySingleplayer', project.property('quickPlayWorld').toString()
+            }
         }
 
         server {
@@ -113,6 +122,13 @@ configurations {
 }
 
 dependencies {
+    // Renderer jars the merged Sodium/Iris compatibility layer compiles against.
+    compileOnly files('../refmod121/iris-neoforge-1.8.14-beta.1+mc1.21.1.jar')
+    compileOnly files('../compat-analysis/sodium-implementation.jar')
+    compileOnly fileTree('../compat-analysis') {
+        include 'fabric-*.jar'
+    }
+
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"
@@ -189,4 +205,26 @@ idea {
         downloadSources = true
         downloadJavadoc = true
     }
+}
+
+tasks.register('testPackedLight', JavaExec) {
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    description = 'Verifies vanilla and Colorful Lighting packed-light decoding and shader patching.'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.colorfullighting.compat.PackedLightCompatTest'
+    enableAssertions = true
+}
+
+tasks.named('test') {
+    failOnNoDiscoveredTests = false
+}
+
+tasks.named('check') {
+    dependsOn testPackedLight
+}
+
+// MIT requires the license text to accompany distributions.
+tasks.named('jar', Jar) {
+    from('LICENSE.txt')
 }

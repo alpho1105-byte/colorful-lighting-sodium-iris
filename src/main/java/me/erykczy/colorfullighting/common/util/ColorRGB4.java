@@ -8,7 +8,9 @@ public class ColorRGB4 {
         return fromRGB8(other.red, other.green, other.blue);
     }
     public static ColorRGB4 fromRGB8(int r, int g, int b) {
-        return fromRGB4(r / 17, g / 17, b / 17); // 0..255 range to 0..15 range
+        // rounding division: plain /17 truncates every 8-bit value below 17 to zero,
+        // silently turning dim configured colors into "no light"
+        return fromRGB4((r + 8) / 17, (g + 8) / 17, (b + 8) / 17); // 0..255 range to 0..15 range
     }
 
     public static ColorRGB4 fromRGB4(int r, int g, int b) {

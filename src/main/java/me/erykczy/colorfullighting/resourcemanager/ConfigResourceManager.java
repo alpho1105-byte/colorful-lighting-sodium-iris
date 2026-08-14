@@ -15,7 +15,10 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import org.slf4j.Logger;
 
+import java.io.BufferedReader;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 public class ConfigResourceManager implements ResourceManagerReloadListener {
     private static final Gson GSON = new GsonBuilder().setObjectToNumberStrategy(ToNumberPolicy.LONG_OR_DOUBLE).create();
@@ -26,51 +29,55 @@ public class ConfigResourceManager implements ResourceManagerReloadListener {
         HashMap<ResourceLocation, Config.ColorEmitter> emitters = new HashMap<>();
         HashMap<ResourceLocation, Config.ColorFilter> filters = new HashMap<>();
 
-        resourceManager.listPacks().forEach((pack) -> {
-            for(String namespace : pack.getNamespaces(PackType.CLIENT_RESOURCES)) {
-                for(Resource resource : resourceManager.getResourceStack(ResourceLocation.fromNamespaceAndPath(namespace, "light/emitters.json"))) {
-                    try {
-                        JsonObject object = GSON.fromJson(resource.openAsReader(), JsonObject.class);
-                        for(var entry : object.entrySet()) {
-                            try {
-                                var key = ResourceLocation.parse(entry.getKey());
-                                if(!BuiltInRegistries.BLOCK.containsKey(key)) throw new IllegalArgumentException("Couldn't find block "+key);
-                                emitters.put(key, Config.ColorEmitter.fromJsonElement(entry.getValue()));
-                            }
-                            catch (Exception e) {
-                                LOGGER.warn("Failed to load light emitter entry {} from pack {}", entry.toString(), resource.sourcePackId(), e);
-                            }
+        // collect the distinct namespaces once: iterating getResourceStack per pack that
+        // declares a namespace re-parses the same full stack once per such pack
+        Set<String> namespaces = new HashSet<>();
+        resourceManager.listPacks().forEach(pack -> namespaces.addAll(pack.getNamespaces(PackType.CLIENT_RESOURCES)));
+
+        for(String namespace : namespaces) {
+            for(Resource resource : resourceManager.getResourceStack(ResourceLocation.fromNamespaceAndPath(namespace, "light/emitters.json"))) {
+                try (BufferedReader reader = resource.openAsReader()) {
+                    JsonObject object = GSON.fromJson(reader, JsonObject.class);
+                    for(var entry : object.entrySet()) {
+                        try {
+                            var key = ResourceLocation.parse(entry.getKey());
+                            if(!BuiltInRegistries.BLOCK.containsKey(key)) throw new IllegalArgumentException("Couldn't find block "+key);
+                            emitters.put(key, Config.ColorEmitter.fromJsonElement(entry.getValue()));
                         }
-                    }
-                    catch (Exception e) {
-                        LOGGER.warn("Failed to load light emitters from pack {}", resource.sourcePackId(), e);
+                        catch (Exception e) {
+                            LOGGER.warn("Failed to load light emitter entry {} from pack {}", entry.toString(), resource.sourcePackId(), e);
+                        }
                     }
                 }
-
-                for(Resource resource : resourceManager.getResourceStack(ResourceLocation.fromNamespaceAndPath(namespace, "light/filters.json"))) {
-                    try {
-                        JsonObject object = GSON.fromJson(resource.openAsReader(), JsonObject.class);
-                        for(var entry : object.entrySet()) {
-                            try {
-                                var key = ResourceLocation.parse(entry.getKey());
-                                if(!BuiltInRegistries.BLOCK.containsKey(key)) throw new IllegalArgumentException("Couldn't find block "+key);
-                                filters.put(key, Config.ColorFilter.fromJsonElement(entry.getValue()));
-                            }
-                            catch (Exception e) {
-                                LOGGER.warn("Failed to load light color filter entry {} from pack {}", entry.toString(), resource.sourcePackId(), e);
-                            }
-                        }
-                    }
-                    catch (Exception e) {
-                        LOGGER.warn("Failed to load light color filters from pack {}", resource.sourcePackId(), e);
-                    }
+                catch (Exception e) {
+                    LOGGER.warn("Failed to load light emitters from pack {}", resource.sourcePackId(), e);
                 }
             }
-        });
+
+            for(Resource resource : resourceManager.getResourceStack(ResourceLocation.fromNamespaceAndPath(namespace, "light/filters.json"))) {
+                try (BufferedReader reader = resource.openAsReader()) {
+                    JsonObject object = GSON.fromJson(reader, JsonObject.class);
+                    for(var entry : object.entrySet()) {
+                        try {
+                            var key = ResourceLocation.parse(entry.getKey());
+                            if(!BuiltInRegistries.BLOCK.containsKey(key)) throw new IllegalArgumentException("Couldn't find block "+key);
+                            filters.put(key, Config.ColorFilter.fromJsonElement(entry.getValue()));
+                        }
+                        catch (Exception e) {
+                            LOGGER.warn("Failed to load light color filter entry {} from pack {}", entry.toString(), resource.sourcePackId(), e);
+                        }
+                    }
+                }
+                catch (Exception e) {
+                    LOGGER.warn("Failed to load light color filters from pack {}", resource.sourcePackId(), e);
+                }
+            }
+        }
 
         Config.setColorEmitters(emitters);
         Config.setColorFilters(filters);
-        if(ColorfulLighting.clientAccessor.getLevel() != null)
+        // the initial startup reload runs before FMLLoadComplete assigns the accessor
+        if(ColorfulLighting.clientAccessor != null && ColorfulLighting.clientAccessor.getLevel() != null)
             ColoredLightEngine.getInstance().reset();
     }
 }

@@ -25,7 +25,12 @@ public abstract class JsonHelper {
 
     public static ColorRGB4 getColor4FromHexString(String string) {
         if(string.length() != 6+1 || !string.startsWith("#")) return null;
-        long colorFromHex = Long.parseLong(string.substring(1), 16);
+        long colorFromHex;
+        try {
+            colorFromHex = Long.parseLong(string.substring(1), 16);
+        } catch (NumberFormatException e) {
+            return null; // malformed hex like "#GGRRBB" must not abort the whole parse
+        }
         long blue = colorFromHex & 0xFF;
         long green = (colorFromHex >> 8) & 0xFF;
         long red = (colorFromHex >> 16) & 0xFF;
@@ -47,7 +52,11 @@ public abstract class JsonHelper {
             value = element.getAsBigInteger().intValue()/17;
         }
         catch (NumberFormatException e) {
-            value = (int)(element.getAsFloat()*15.0f);
+            try {
+                value = (int)(element.getAsFloat()*15.0f);
+            } catch (RuntimeException e2) {
+                return null; // non-numeric value must not abort the whole parse
+            }
         }
         if(value >= 0 && value < 16) return value;
         return null;

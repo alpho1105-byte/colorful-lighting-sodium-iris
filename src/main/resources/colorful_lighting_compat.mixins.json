@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.colorfullighting.compat.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "BlockRendererMixin",
+    "ChunkVertexMixin",
+    "CompactChunkVertexMixin",
+    "DefaultFluidRendererMixin",
+    "IrisFormatAnalyzerMixin",
+    "IrisIdMapUniformsMixin",
+    "IrisRenderingPipelineMixin",
+    "IrisSodiumProgramsMixin",
+    "IrisXHFPModelVertexTypeMixin",
+    "ResourcePackScannerMixin",
+    "ShaderChunkRendererMixin",
+    "SodiumLightDataAccessMixin",
+    "TransformPatcherMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

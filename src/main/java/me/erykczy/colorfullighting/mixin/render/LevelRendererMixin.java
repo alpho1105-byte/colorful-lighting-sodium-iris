@@ -2,10 +2,8 @@ package me.erykczy.colorfullighting.mixin.render;
 
 import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.accessors.BlockStateWrapper;
-import me.erykczy.colorfullighting.accessors.LevelWrapper;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.Config;
-import me.erykczy.colorfullighting.common.accessors.BlockStateAccessor;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
 import me.erykczy.colorfullighting.common.util.ColorRGB4;
 import me.erykczy.colorfullighting.common.util.ColorRGB8;
@@ -24,6 +22,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class LevelRendererMixin {
     @Inject(method = "getLightColor(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)I", at = @At("HEAD"), cancellable = true)
     private static void colorfullighting$getLightColor(BlockAndTintGetter level, BlockState state, BlockPos pos, CallbackInfoReturnable<Integer> cir) {
+        ColoredLightEngine engine = ColoredLightEngine.getInstance();
+        if(engine == null || ColorfulLighting.clientAccessor == null) return; // vanilla path until the engine exists
         int skyLight = level.getBrightness(LightLayer.SKY, pos);
         if(state.emissiveRendering(level, pos)) {
             LevelAccessor levelAccessor = ColorfulLighting.clientAccessor.getLevel();
@@ -31,12 +31,23 @@ public class LevelRendererMixin {
                 cir.setReturnValue(PackedLightData.packData(15, 255, 255, 255));
                 return;
             }
-            BlockStateAccessor stateAccessor = new BlockStateWrapper(state);
-            var emission = Config.getLightColor(stateAccessor);
+            var emission = Config.getLightColor(new BlockStateWrapper(state));
             cir.setReturnValue(PackedLightData.packData(skyLight, ColorRGB8.fromRGB4(emission)));
+            return; // previously fell through and the engine sample overwrote the emissive value
         }
 
-        ColorRGB4 color = ColoredLightEngine.getInstance().sampleLightColor(pos);
+        ColorRGB4 color = engine.sampleLightColor(pos);
+        // vanilla floors the result at the state's own emission; without it dynamically
+        // emitting blocks go dark and fresh sources depend entirely on async propagation
+        int emission = state.getLightEmission(level, pos);
+        if(emission > 0) {
+            ColorRGB4 emitColor = Config.getLightColor(new BlockStateWrapper(state)).mul(emission / 15.0f);
+            color = ColorRGB4.fromRGB4(
+                    Math.max(color.red4, emitColor.red4),
+                    Math.max(color.green4, emitColor.green4),
+                    Math.max(color.blue4, emitColor.blue4)
+            );
+        }
         cir.setReturnValue(PackedLightData.packData(skyLight, ColorRGB8.fromRGB4(color)));
     }
 

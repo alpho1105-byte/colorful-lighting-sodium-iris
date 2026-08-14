@@ -1,5 +1,14 @@
+> [!NOTE]
+> **Sodium/Iris Edition** — a local fork of [erykczy's Colorful Lighting](https://github.com/erykczy/colorful-lighting) (MIT).
+> This fork merges the `colorful_lighting_sodium_compat` layer into the mod (Sodium 0.8 terrain vertex format,
+> Iris 1.8 shader-pack sanitizing/tinting, colored held-item light) and fixes upstream defects at the source:
+> emissive-block fullbright, entity light overrides, trilinear sampling, ghost light on rapid place/break,
+> light-engine-replacement compatibility (ScalableLux/Starlight), storage tearing, worker-thread resilience,
+> and config parse robustness. Requires Sodium 0.8.13-beta.1 and Iris 1.8.14-beta.1. Replaces BOTH the original
+> `colorful_lighting` jar and the separate compat jar.
+
 > [!CAUTION]
-> Due to my busy schedule, **the project's development is slowed down**.
+> (Upstream notice) Due to my busy schedule, **the project's development is slowed down**.
 
 ![a creeper in a cave lit by lava](https://cdn.modrinth.com/data/cached_images/db98e8b5f28311e2c7edcd6e9cd00a82ba62f22b_0.webp)
 The mod adds colored lighting to the game. Other mods that add colored lights can use it as a dependency.\

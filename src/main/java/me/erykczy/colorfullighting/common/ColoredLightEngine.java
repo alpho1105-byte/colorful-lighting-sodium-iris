@@ -55,33 +55,39 @@ public class ColoredLightEngine {
     }
     /**
      * Mixes light color from blocks neighbouring given position using trilinear interpolation.
+     * Weights are the true fractional offsets and black corners participate in the blend,
+     * so the sampled color fades smoothly with distance instead of snapping at range edges.
      */
     public ColorRGB8 sampleTrilinearLightColor(Vec3 pos) {
-        int cornerX = (int)Math.round(pos.x) - 1;
-        int cornerY = (int)Math.round(pos.y) - 1;
-        int cornerZ = (int)Math.round(pos.z) - 1;
-        ColorRGB8 c000 = ColorRGB8.fromRGB4(sampleLightColor(cornerX + 0, cornerY + 0, cornerZ + 0));
-        ColorRGB8 c100 = ColorRGB8.fromRGB4(sampleLightColor(cornerX + 1, cornerY + 0, cornerZ + 0));
-        ColorRGB8 c101 = ColorRGB8.fromRGB4(sampleLightColor(cornerX + 1, cornerY + 0, cornerZ + 1));
-        ColorRGB8 c001 = ColorRGB8.fromRGB4(sampleLightColor(cornerX + 0, cornerY + 0, cornerZ + 1));
-        ColorRGB8 c010 = ColorRGB8.fromRGB4(sampleLightColor(cornerX + 0, cornerY + 1, cornerZ + 0));
-        ColorRGB8 c110 = ColorRGB8.fromRGB4(sampleLightColor(cornerX + 1, cornerY + 1, cornerZ + 0));
-        ColorRGB8 c111 = ColorRGB8.fromRGB4(sampleLightColor(cornerX + 1, cornerY + 1, cornerZ + 1));
-        ColorRGB8 c011 = ColorRGB8.fromRGB4(sampleLightColor(cornerX + 0, cornerY + 1, cornerZ + 1));
+        double gridX = pos.x - 0.5;
+        double gridY = pos.y - 0.5;
+        double gridZ = pos.z - 0.5;
+        int cornerX = (int) Math.floor(gridX);
+        int cornerY = (int) Math.floor(gridY);
+        int cornerZ = (int) Math.floor(gridZ);
+        double deltaX = gridX - cornerX;
+        double deltaY = gridY - cornerY;
+        double deltaZ = gridZ - cornerZ;
 
-        double x = (pos.x - (double) cornerX) / 2.0;
-        double y = (pos.y - (double) cornerY) / 2.0;
-        double z = (pos.z - (double) cornerZ) / 2.0;
-
-        ColorRGB8 c00 = ColorRGB8.linearInterpolation(c000, c100, x);
-        ColorRGB8 c01 = ColorRGB8.linearInterpolation(c001, c101, x);
-        ColorRGB8 c11 = ColorRGB8.linearInterpolation(c011, c111, x);
-        ColorRGB8 c10 = ColorRGB8.linearInterpolation(c010, c110, x);
-
-        ColorRGB8 c0 = ColorRGB8.linearInterpolation(c00, c10, y);
-        ColorRGB8 c1 = ColorRGB8.linearInterpolation(c01, c11, y);
-
-        return ColorRGB8.linearInterpolation(c0, c1, z);
+        double red = 0.0, green = 0.0, blue = 0.0;
+        for (int dx = 0; dx <= 1; dx++) {
+            for (int dy = 0; dy <= 1; dy++) {
+                for (int dz = 0; dz <= 1; dz++) {
+                    ColorRGB4 corner = sampleLightColor(cornerX + dx, cornerY + dy, cornerZ + dz);
+                    double weight = (dx == 0 ? 1.0 - deltaX : deltaX)
+                            * (dy == 0 ? 1.0 - deltaY : deltaY)
+                            * (dz == 0 ? 1.0 - deltaZ : deltaZ);
+                    red += corner.red4 * weight;
+                    green += corner.green4 * weight;
+                    blue += corner.blue4 * weight;
+                }
+            }
+        }
+        return ColorRGB8.fromRGB8(
+                (int) Math.round(red * 17.0),
+                (int) Math.round(green * 17.0),
+                (int) Math.round(blue * 17.0)
+        );
     }
 
 
@@ -138,8 +144,11 @@ public class ColoredLightEngine {
         if(!increaseRequests.increaseRequests.isEmpty()) blockUpdateIncreaseRequests.add(increaseRequests);
     }
     private void handleBlockUpdate(LevelAccessor level, Queue<LightUpdateRequest> increaseRequests, Queue<LightUpdateRequest> decreaseRequests, BlockPos blockPos) {
-        ColorRGB4 lightColor = storage.getEntry(blockPos);
-        assert lightColor != null;
+        // read through the propagator's staging buffers, not just committed storage: a
+        // freshly placed source may still be in flight, and seeding from the stale
+        // committed value would skip the decrease wave and strand its light forever
+        ColorRGB4 lightColor = lightPropagator.getLatestLightColor(blockPos);
+        if(lightColor == null) return; // section not loaded
         if(lightColor.red4 == 0 && lightColor.green4 == 0 && lightColor.blue4 == 0)
             requestLightPullIn(increaseRequests, blockPos);  // block probably destroyed/replaced with transparent, light pull in might be needed
         else
@@ -152,11 +161,14 @@ public class ColoredLightEngine {
     private void requestLightPullIn(Queue<LightUpdateRequest> increaseRequests, BlockPos blockPos) {
         for(var direction : Direction.values()) {
             BlockPos neighbourPos = blockPos.relative(direction);
-            ColorRGB4 neighbourLight = storage.getEntry(neighbourPos);
+            ColorRGB4 neighbourLight = lightPropagator.getLatestLightColor(neighbourPos);
             if(neighbourLight == null) continue;
 
             if(neighbourLight.red4 == 0 && neighbourLight.green4 == 0 && neighbourLight.blue4 == 0) continue;
-            increaseRequests.add(new LightUpdateRequest(neighbourPos, neighbourLight, true));
+            // color is resolved when the request is processed (after pending decreases),
+            // otherwise a value captured now can resurrect light another in-flight
+            // decrease wave is about to remove
+            increaseRequests.add(new LightUpdateRequest(neighbourPos, null, true));
         }
     }
 
@@ -182,7 +194,7 @@ public class ColoredLightEngine {
             try {
                 lightPropagatorThread.join();
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt(); // still rebuild the engine below
             }
         }
         storage.clear();
@@ -192,7 +204,8 @@ public class ColoredLightEngine {
         blockUpdateDecreaseRequests.clear();
         chunksWaitingForPropagation.clear();
         lightPropagator = new LightPropagator();
-        lightPropagatorThread = new Thread(lightPropagator);
+        lightPropagatorThread = new Thread(lightPropagator, "ColorfulLighting-LightPropagator");
+        lightPropagatorThread.setDaemon(true);
         lightPropagatorThread.start();
         ColorfulLighting.LOGGER.info("Colored light engine reset");
     }
@@ -219,12 +232,19 @@ public class ColoredLightEngine {
         public void run() {
             running = true;
             while (running) {
-                propagateLight();
+                try {
+                    propagateLight();
+                } catch (Exception e) {
+                    // a dying worker would silently freeze colored lighting while the
+                    // request queues keep growing; log and keep the loop alive
+                    ColorfulLighting.LOGGER.error("Colored light propagation failed", e);
+                }
 
                 try {
                     Thread.sleep(1);
                 } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                    Thread.currentThread().interrupt();
+                    return;
                 }
             }
         }
@@ -238,7 +258,14 @@ public class ColoredLightEngine {
         }
 
         public ColorRGB4 getLatestLightColor(BlockPos blockPos) {
-            return lightChangesInProgress.getOrDefault(blockPos, lightChangesReady.getOrDefault(blockPos, storage.getEntry(blockPos)));
+            // check the staging buffers before storage: evaluating storage first (as the
+            // old nested getOrDefault did) races with the apply+clear on the client
+            // thread and can return a pre-commit value
+            ColorRGB4 inProgress = lightChangesInProgress.get(blockPos);
+            if(inProgress != null) return inProgress;
+            ColorRGB4 ready = lightChangesReady.get(blockPos);
+            if(ready != null) return ready;
+            return storage.getEntry(blockPos);
         }
 
         private record NearestBlockRequestsResult(BlockRequests blockUpdate, int distanceBlocks) {}
@@ -305,13 +332,20 @@ public class ColoredLightEngine {
          * apply light changes in progress directly to storage
          */
         private void applyLightChangesDirectly() {
-            for (var entry : lightChangesInProgress.entrySet()) {
-                storage.setEntryUnsafe(entry.getKey(), entry.getValue());
-                synchronized (dirtySections) {
-                    SectionPos.aroundAndAtBlockPos(entry.getKey(), dirtySections::add);
+            // hold the ready lock so worker-side commits never interleave with the
+            // client thread's applyReadyLightChanges writing the same sections
+            lightChangesReadyLock.lock();
+            try {
+                for (var entry : lightChangesInProgress.entrySet()) {
+                    storage.setEntryUnsafe(entry.getKey(), entry.getValue());
+                    synchronized (dirtySections) {
+                        SectionPos.aroundAndAtBlockPos(entry.getKey(), dirtySections::add);
+                    }
                 }
+                lightChangesInProgress.clear();
+            } finally {
+                lightChangesReadyLock.unlock();
             }
-            lightChangesInProgress.clear();
         }
 
         /**
@@ -368,10 +402,18 @@ public class ColoredLightEngine {
         private boolean propagateIncrease(Queue<LightUpdateRequest> increaseRequests, LightUpdateRequest request, LevelAccessor level) {
             ColorRGB4 oldLightColor = getLatestLightColor(request.blockPos);
             if(oldLightColor == null) return false; // section might have got unloaded and propagation should stop
+            ColorRGB4 sourceColor = request.lightColor;
+            if(sourceColor == null) {
+                // deferred pull-in: resolve the color only now, after every pending
+                // decrease wave has run, so a value removed in the same batch cannot
+                // be captured and resurrected
+                sourceColor = oldLightColor;
+                if(sourceColor.red4 == 0 && sourceColor.green4 == 0 && sourceColor.blue4 == 0) return true;
+            }
             ColorRGB4 newLightColor = ColorRGB4.fromRGB4(
-                    Math.max(oldLightColor.red4, request.lightColor.red4),
-                    Math.max(oldLightColor.green4, request.lightColor.green4),
-                    Math.max(oldLightColor.blue4, request.lightColor.blue4)
+                    Math.max(oldLightColor.red4, sourceColor.red4),
+                    Math.max(oldLightColor.green4, sourceColor.green4),
+                    Math.max(oldLightColor.blue4, sourceColor.blue4)
             );
 
             // if light color didn't change (check is ignored if request is forced)
@@ -388,9 +430,9 @@ public class ColoredLightEngine {
                 int lightBlocked = Math.max(1, neighbourState.getLightBlock(level, neighbourPos)); // vanilla light block
                 ColorRGB4 coloredLightTransmittance = Config.getColoredLightTransmittance(level, neighbourPos, neighbourState); // rgb transmittance (example: red stained glass can let only red light through)
                 ColorRGB4 neighbourLightColor = ColorRGB4.fromRGB4(
-                        Math.clamp(request.lightColor.red4 - lightBlocked, 0, coloredLightTransmittance.red4),
-                        Math.clamp(request.lightColor.green4 - lightBlocked, 0, coloredLightTransmittance.green4),
-                        Math.clamp(request.lightColor.blue4 - lightBlocked, 0, coloredLightTransmittance.blue4)
+                        Math.clamp(sourceColor.red4 - lightBlocked, 0, coloredLightTransmittance.red4),
+                        Math.clamp(sourceColor.green4 - lightBlocked, 0, coloredLightTransmittance.green4),
+                        Math.clamp(sourceColor.blue4 - lightBlocked, 0, coloredLightTransmittance.blue4)
                 );
                 // if no more color to propagate
                 if(neighbourLightColor.red4 == 0 && neighbourLightColor.green4 == 0 && neighbourLightColor.blue4 == 0) continue;
@@ -448,8 +490,9 @@ public class ColoredLightEngine {
                     if(neighbourLightColor.red4 == 0 && neighbourLightColor.green4 == 0 && neighbourLightColor.blue4 == 0)
                         continue;
 
-                    // force neighbour to propagate light to the region that has been just cleared (decreased)
-                    increaseRequests.add(new LightUpdateRequest(neighbourPos, neighbourLightColor, true));
+                    // force neighbour to propagate light to the region that has been just
+                    // cleared (color resolved at processing time, after all decreases)
+                    increaseRequests.add(new LightUpdateRequest(neighbourPos, null, true));
                 }
             }
             return true;
