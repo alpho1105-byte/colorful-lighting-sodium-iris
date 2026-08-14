@@ -16,6 +16,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * which the fallback never touches, so terrain always keeps the colorful value.
  */
 public final class ColorfulLightGate {
+    // checked before any Iris class reference so the merged jar runs without Iris;
+    // resolved lazily (first render call), when the mod list is fully built
+    private static final boolean IRIS_LOADED = net.neoforged.fml.ModList.get().isLoaded("iris");
+
     private ColorfulLightGate() {
     }
 
@@ -24,7 +28,8 @@ public final class ColorfulLightGate {
     }
 
     public static int decodeForShaderPack(int packedLight) {
-        if (!PackedLightCompat.isColorful(packedLight)
+        if (!IRIS_LOADED
+                || !PackedLightCompat.isColorful(packedLight)
                 || !IrisPatchState.cpuDecodeNeeded()
                 || !IrisApi.getInstance().isShaderPackInUse()) {
             return packedLight;

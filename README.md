@@ -4,8 +4,10 @@
 > Iris 1.8 shader-pack sanitizing/tinting, colored held-item light) and fixes upstream defects at the source:
 > emissive-block fullbright, entity light overrides, trilinear sampling, ghost light on rapid place/break,
 > light-engine-replacement compatibility (ScalableLux/Starlight), storage tearing, worker-thread resilience,
-> and config parse robustness. Requires Sodium 0.8.13-beta.1 and Iris 1.8.14-beta.1. Replaces BOTH the original
-> `colorful_lighting` jar and the separate compat jar.
+> and config parse robustness. Sodium 0.8.13-beta.1 and Iris 1.8.14-beta.1 are OPTIONAL: the compatibility
+> layer detects them and activates only when present (standalone and Sodium-only setups use the vanilla
+> core-shader path). When they are installed, the versions must match the pinned ranges. Replaces BOTH the
+> original `colorful_lighting` jar and the separate compat jar.
 
 > [!CAUTION]
 > (Upstream notice) Due to my busy schedule, **the project's development is slowed down**.

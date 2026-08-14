@@ -25,3 +25,5 @@ run-data
 
 repo
 run-iris-test/
+run-vanilla-test/
+run-sodium-test/

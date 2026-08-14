@@ -88,17 +88,18 @@ config="colorful_lighting_compat.mixins.json"
     ordering="NONE"
     side="BOTH"
 
-# The merged Sodium/Iris compatibility layer targets these exact renderer versions.
+# The merged Sodium/Iris compatibility layer activates only when these mods are present
+# (a mixin plugin skips their mixins otherwise), but when present the versions must match.
 [[dependencies.${mod_id}]]
     modId="sodium"
-    type="required"
+    type="optional"
     versionRange="[0.8.13-beta.1,0.8.14)"
     ordering="AFTER"
     side="CLIENT"
 
 [[dependencies.${mod_id}]]
     modId="iris"
-    type="required"
+    type="optional"
     versionRange="[1.8.14-beta.1,1.8.15)"
     ordering="AFTER"
     side="CLIENT"
