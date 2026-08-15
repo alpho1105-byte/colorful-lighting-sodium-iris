@@ -13,11 +13,17 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class Config {
     public static final ColorRGB4 defaultColor = ColorRGB4.fromRGB4(15, 15, 15);
     private static HashMap<ResourceLocation, ColorEmitter> colorEmitters = new HashMap<>();
     private static HashMap<ResourceLocation, ColorFilter> colorFilters = new HashMap<>();
+    // per-block entries keyed on blockstate properties ("modid:block[lit=true,color=red]"),
+    // each list sorted most-specific-first at load time
+    private static HashMap<ResourceLocation, List<StateColorEmitter>> stateColorEmitters = new HashMap<>();
+    private static HashMap<ResourceLocation, List<StateColorFilter>> stateColorFilters = new HashMap<>();
 
     public static void setColorEmitters(HashMap<ResourceLocation, ColorEmitter> colors) {
         colorEmitters = colors;
@@ -27,28 +33,71 @@ public class Config {
         colorFilters = filters;
     }
 
+    public static void setStateColorEmitters(HashMap<ResourceLocation, List<StateColorEmitter>> colors) {
+        stateColorEmitters = colors;
+    }
+
+    public static void setStateColorFilters(HashMap<ResourceLocation, List<StateColorFilter>> filters) {
+        stateColorFilters = filters;
+    }
+
+    private static boolean matchesProperties(@NotNull BlockStateAccessor blockState, Map<String, String> properties) {
+        for(var entry : properties.entrySet()) {
+            if(!entry.getValue().equals(blockState.getPropertyValue(entry.getKey())))
+                return false;
+        }
+        return true;
+    }
+
+    @Nullable
+    private static ColorEmitter findEmitter(@Nullable ResourceKey<Block> blockResourceKey, @Nullable BlockStateAccessor blockState) {
+        if(blockResourceKey == null) return null;
+        if(blockState != null) {
+            List<StateColorEmitter> stateEntries = stateColorEmitters.get(blockResourceKey.location());
+            if(stateEntries != null) {
+                for(StateColorEmitter entry : stateEntries) {
+                    if(matchesProperties(blockState, entry.properties()))
+                        return entry.emitter();
+                }
+            }
+        }
+        return colorEmitters.get(blockResourceKey.location());
+    }
+
+    @Nullable
+    private static ColorFilter findFilter(@Nullable ResourceKey<Block> blockResourceKey, @Nullable BlockStateAccessor blockState) {
+        if(blockResourceKey == null) return null;
+        if(blockState != null) {
+            List<StateColorFilter> stateEntries = stateColorFilters.get(blockResourceKey.location());
+            if(stateEntries != null) {
+                for(StateColorFilter entry : stateEntries) {
+                    if(matchesProperties(blockState, entry.properties()))
+                        return entry.filter();
+                }
+            }
+        }
+        return colorFilters.get(blockResourceKey.location());
+    }
+
     public static ColorRGB4 getColorEmission(@NotNull LevelAccessor level, BlockPos pos) { return getColorEmission(level, pos, level.getBlockState(pos)); }
     public static ColorRGB4 getColorEmission(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
         float lightEmission = blockState.getLightEmission(level, pos)/15.0f;
 
-        ResourceKey<Block> blockResourceKey = blockState.getBlockKey();
-
-        if(blockResourceKey != null) {
-            ColorEmitter config = colorEmitters.get(blockResourceKey.location());
-            if(config != null)
-                return config.color().mul(config.overriddenBrightness4 < 0 ? lightEmission : config.overriddenBrightness4 /15.0f);
-        }
+        ColorEmitter config = findEmitter(blockState.getBlockKey(), blockState);
+        if(config != null)
+            return config.color().mul(config.overriddenBrightness4 < 0 ? lightEmission : config.overriddenBrightness4 /15.0f);
         return defaultColor.mul(lightEmission);
     }
     public static ColorRGB4 getLightColor(@NotNull BlockStateAccessor blockState) {
-        return getLightColor(blockState.getBlockKey());
+        ColorEmitter config = findEmitter(blockState.getBlockKey(), blockState);
+        if(config != null)
+            return config.color();
+        return defaultColor;
     }
     public static ColorRGB4 getLightColor(@Nullable ResourceKey<Block> blockLocation) {
-        if(blockLocation != null) {
-            ColorEmitter config = colorEmitters.get(blockLocation.location());
-            if(config != null)
-                return config.color();
-        }
+        ColorEmitter config = findEmitter(blockLocation, null);
+        if(config != null)
+            return config.color();
         return defaultColor;
     }
 
@@ -57,9 +106,7 @@ public class Config {
         return blockState == null ? defaultValue : getColoredLightTransmittance(level, pos, blockState);
     }
     public static ColorRGB4 getColoredLightTransmittance(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
-        ResourceKey<Block> blockResourceKey = blockState.getBlockKey();
-        if(blockResourceKey == null) return ColorRGB4.fromRGB4(15, 15, 15);
-        ColorFilter config = colorFilters.get(blockResourceKey.location());
+        ColorFilter config = findFilter(blockState.getBlockKey(), blockState);
         if(config == null) return ColorRGB4.fromRGB4(15, 15, 15);
         return config.transmittance;
     }
@@ -69,22 +116,15 @@ public class Config {
         return blockState == null ? defaultValue : getEmissionBrightness(level, pos, blockState);
     }
     public static int getEmissionBrightness(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
-        ResourceKey<Block> blockResourceKey = blockState.getBlockKey();
-
-        if(blockResourceKey != null) {
-            ColorEmitter config = colorEmitters.get(blockResourceKey.location());
-            if(config != null && config.overriddenBrightness4 >= 0)
-                return config.overriddenBrightness4;
-        }
+        ColorEmitter config = findEmitter(blockState.getBlockKey(), blockState);
+        if(config != null && config.overriddenBrightness4 >= 0)
+            return config.overriddenBrightness4;
         return blockState.getLightEmission(level, pos);
     }
     public static int getEmissionBrightness(BlockStateAccessor blockState) {
-        ResourceKey<Block> blockResourceKey = blockState.getBlockKey();
-        if(blockResourceKey != null) {
-            ColorEmitter config = colorEmitters.get(blockResourceKey.location());
-            if(config != null && config.overriddenBrightness4 >= 0)
-                return config.overriddenBrightness4;
-        }
+        ColorEmitter config = findEmitter(blockState.getBlockKey(), blockState);
+        if(config != null && config.overriddenBrightness4 >= 0)
+            return config.overriddenBrightness4;
         return blockState.getLightEmission();
     }
 
@@ -128,6 +168,12 @@ public class Config {
             }
         }
     }
+    /** A color entry that applies only to states matching every listed property value. */
+    public record StateColorEmitter(Map<String, String> properties, ColorEmitter emitter) {}
+
+    /** A filter entry that applies only to states matching every listed property value. */
+    public record StateColorFilter(Map<String, String> properties, ColorFilter filter) {}
+
     public record ColorFilter(ColorRGB4 transmittance) {
         public static ColorFilter fromJsonElement(JsonElement value) throws IllegalArgumentException {
             ColorRGB4 color = getColorFromJsonElement(value);

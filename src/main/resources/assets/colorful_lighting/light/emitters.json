@@ -67,6 +67,8 @@
 	"minecraft:deepslate_redstone_ore": "red",
 	"minecraft:redstone_ore": "red",
 	"minecraft:trial_spawner": "white",
+	"minecraft:trial_spawner[ominous=true]": "#90fbff",
+	"minecraft:vault[ominous=true]": "#90fbff",
 	"minecraft:enchanting_table": "purple",
 	"minecraft:ender_chest": "purple",
 	"minecraft:glow_lichen": "white",

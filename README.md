@@ -64,6 +64,24 @@ resources), create a `light` folder next to `textures`/`models`:
   vanilla emission level is used. This lets non-emitting blocks (like the leaves above) emit light.
 - Blocks that emit light but have no entry glow white.
 
+**Blockstate-specific colors** *(this fork)* — keys may carry blockstate properties using command syntax,
+which is how a block whose ID never changes (e.g. a lamp re-dyed by right-clicking) gets a different light
+color per state:
+
+```json
+{
+	"minecraft:trial_spawner[ominous=true]": "#90fbff",
+	"yourmod:oil_lamp[color=red]": "red",
+	"yourmod:oil_lamp[color=lime]": "#80FF00",
+	"yourmod:oil_lamp[lit=false]": "black;0"
+}
+```
+
+- Only the listed properties need to match; unlisted properties are wildcards. The most specific matching
+  entry wins, and a plain `modid:block` entry is the fallback for that block.
+- Properties and values are validated against the block at load time — typos are logged and skipped.
+- State changes are ordinary block updates, so re-dyeing a lamp re-propagates its light immediately.
+
 **`assets/<namespace>/light/filters.json`** — what light color passes through a block (same color syntax):
 
 ```json
