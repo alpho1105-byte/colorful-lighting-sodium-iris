@@ -104,7 +104,7 @@ light and re-propagates when its position, level, or color changes. Purely a cli
 light values and gameplay are untouched.
 
 **Static per-type colors** — `assets/<namespace>/light/entity_emitters.json`, same color syntax as block
-emitters (a missing `;X` level suffix means full level 15):
+emitters (a missing `;X` level suffix means full level that is a hex number from 0 to F):
 
 ```json
 {
