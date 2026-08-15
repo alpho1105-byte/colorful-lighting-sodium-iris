@@ -14,9 +14,10 @@ abstract class IrisRenderingPipelineMixin {
     private void colorfulLightingSodiumCompat$reportPatchState(CallbackInfo callbackInfo) {
         ColorfulLightingSodiumCompat.LOGGER.info(
                 "Sanitized {} shader-pack programs for Colorful Lighting packed light"
-                        + " ({} with colored-light tint, {} failures)",
+                        + " ({} with colored-light tint, {} with per-pixel entity lights, {} failures)",
                 IrisPatchState.sanitizedCount(),
                 IrisPatchState.tintedCount(),
+                IrisPatchState.dynamicLightCount(),
                 IrisPatchState.failureCount()
         );
     }

@@ -27,6 +27,17 @@ public final class ColorfulLightGate {
         return LevelRenderer.getLightColor(level, state, pos);
     }
 
+    /**
+     * True while entity lights should render as per-pixel shader point lights instead of
+     * feeding the block engine (the pack's GetHeldLighting hook was injected and a pack
+     * is active). Never touches Iris classes when Iris is absent.
+     */
+    public static boolean shaderEntityLightsActive() {
+        return IRIS_LOADED
+                && IrisPatchState.dynamicLightCount() > 0
+                && IrisApi.getInstance().isShaderPackInUse();
+    }
+
     public static int decodeForShaderPack(int packedLight) {
         if (!IRIS_LOADED
                 || !PackedLightCompat.isColorful(packedLight)

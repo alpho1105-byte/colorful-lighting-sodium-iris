@@ -2,6 +2,7 @@ package me.erykczy.colorfullighting;
 
 import me.erykczy.colorfullighting.accessors.MinecraftWrapper;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import me.erykczy.colorfullighting.common.ColorfulLightingConfig;
 import me.erykczy.colorfullighting.common.accessors.ClientAccessor;
 import me.erykczy.colorfullighting.event.ClientEventListener;
 import me.erykczy.colorfullighting.resourcemanager.ModResourceManagers;
@@ -11,7 +12,10 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLLoadCompleteEvent;
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
@@ -24,6 +28,8 @@ public class ColorfulLighting
 
     public ColorfulLighting(IEventBus modEventBus, ModContainer modContainer)
     {
+        modContainer.registerConfig(ModConfig.Type.CLIENT, ColorfulLightingConfig.SPEC);
+        modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
         ModResourceManagers.register(modEventBus);
         NeoForge.EVENT_BUS.register(new ClientEventListener());
         modEventBus.addListener(this::onLoadingComplete);

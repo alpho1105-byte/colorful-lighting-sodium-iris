@@ -1,6 +1,7 @@
 package dev.colorfullighting.compat.mixin;
 
 import dev.colorfullighting.compat.iris.HeldLightColors;
+import me.erykczy.colorfullighting.common.EntityLightManager;
 import net.irisshaders.iris.gl.uniform.UniformHolder;
 import net.irisshaders.iris.gl.uniform.UniformUpdateFrequency;
 import net.irisshaders.iris.shaderpack.IdMap;
@@ -35,5 +36,24 @@ abstract class IrisIdMapUniformsMixin {
                 "colorfulLightingSodiumCompat_HeldColor2",
                 HeldLightColors::offHand
         );
+        uniforms.uniform1i(
+                UniformUpdateFrequency.PER_FRAME,
+                "colorfulLightingSodiumCompat_DynLightCount",
+                EntityLightManager::shaderLightCount
+        );
+        // one vec4 uniform per light slot: Iris array uniforms upload a single vec4
+        for (int i = 0; i < 8; i++) {
+            final int slot = i;
+            uniforms.uniform4f(
+                    UniformUpdateFrequency.PER_FRAME,
+                    "colorfulLightingSodiumCompat_DynLight" + slot,
+                    () -> EntityLightManager.shaderLightPosition(slot)
+            );
+            uniforms.uniform4f(
+                    UniformUpdateFrequency.PER_FRAME,
+                    "colorfulLightingSodiumCompat_DynLightColor" + slot,
+                    () -> EntityLightManager.shaderLightColor(slot)
+            );
+        }
     }
 }

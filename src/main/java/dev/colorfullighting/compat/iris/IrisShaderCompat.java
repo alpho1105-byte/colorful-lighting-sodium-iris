@@ -8,6 +8,9 @@ public final class IrisShaderCompat {
     private static final String HELD_COLOR_NAME = "colorfulLightingSodiumCompat_HeldColor";
     private static final String HELD_HELPER_NAME = "colorfulLightingSodiumCompat_HeldLight";
     private static final String HELD_LIGHTING_DEFINITION = "vec3 GetHeldLighting(";
+    private static final String DYN_LIGHT_NAME = "colorfulLightingSodiumCompat_DynLight";
+    /** Keep in sync with EntityLightManager.MAX_SHADER_LIGHTS. */
+    private static final int MAX_DYNAMIC_LIGHTS = 8;
     private static final String UV2_DECLARATION = "in ivec2 iris_UV2;";
     private static final String MAIN = "void main() {";
     private static final String LIGHTING_CALL = "DoLighting(color,";
@@ -118,6 +121,7 @@ public final class IrisShaderCompat {
         // (zero when there is none), falling back to a copy of the pack's own value
         // captured right before the swap.
         String patched = source;
+        String dynamicHook = "";
         int heldLighting = patched.indexOf(HELD_LIGHTING_DEFINITION);
         if (heldLighting >= 0) {
             String heldHelper = "uniform vec3 " + HELD_COLOR_NAME + ";\n"
@@ -145,6 +149,13 @@ public final class IrisShaderCompat {
                             "vec3 heldLightCol2 = " + HELD_HELPER_NAME
                                     + "(" + HELD_COLOR_NAME + "2);"
                     );
+            if (dynamicLightingSupported(patched)) {
+                patched = patched.substring(0, patched.indexOf(HELD_LIGHTING_DEFINITION))
+                        + dynamicLightDeclarations()
+                        + patched.substring(patched.indexOf(HELD_LIGHTING_DEFINITION));
+                dynamicHook = dynamicLightHook();
+                IrisPatchState.recordDynamicLights();
+            }
         }
         lightingCall = patched.indexOf(LIGHTING_CALL);
 
@@ -157,10 +168,74 @@ public final class IrisShaderCompat {
                 + "\t\tfloat colorfulTintPeak = max(max(colorfulTint.r, colorfulTint.g), colorfulTint.b);\n"
                 + "\t\tfloat shaderPackPeak = max(max(blocklightCol.r, blocklightCol.g), blocklightCol.b);\n"
                 + "\t\tblocklightCol = colorfulTint * (shaderPackPeak / max(colorfulTintPeak, 0.0001));\n"
-                + "\t}\n\t";
+                + "\t}\n"
+                + dynamicHook
+                + "\t";
 
         patched = patched.substring(0, lightingCall) + hook + patched.substring(lightingCall);
         return insertAfterVersion(patched, declarations);
+    }
+
+    /**
+     * The dynamic entity-light hook needs the fragment's camera-relative position and
+     * the mutable lightmap coordinate local, both of which are in scope at the
+     * DoLighting call site the hook precedes.
+     */
+    private static boolean dynamicLightingSupported(String source) {
+        return source.contains("lmCoordM") && source.contains("playerPos");
+    }
+
+    /** One vec4 uniform per light slot: Iris's array uniforms upload a single vec4. */
+    private static String dynamicLightDeclarations() {
+        StringBuilder declarations = new StringBuilder();
+        declarations.append("uniform int ").append(DYN_LIGHT_NAME).append("Count;\n");
+        for (int i = 0; i < MAX_DYNAMIC_LIGHTS; i++) {
+            declarations.append("uniform vec4 ").append(DYN_LIGHT_NAME).append(i).append(";\n");
+            declarations.append("uniform vec4 ").append(DYN_LIGHT_NAME).append("Color").append(i).append(";\n");
+        }
+        return declarations.toString();
+    }
+
+    /**
+     * Lightmap-equivalent entity lights: per-pixel continuous version of the block
+     * engine's falloff (level minus one per block of distance, max-combined), merged
+     * into the lightmap coordinate the pack shades with. The pack's lmCoordM.x equals
+     * blockLightLevel / 15, so a level-N entity light renders exactly as bright as a
+     * placed level-N source - LambDynamicLights semantics, without the block grid.
+     */
+    private static String dynamicLightHook() {
+        StringBuilder hook = new StringBuilder();
+        hook.append("\tif (").append(DYN_LIGHT_NAME).append("Count > 0) {\n");
+        hook.append("\t\tvec4 colorfulDynLights[").append(MAX_DYNAMIC_LIGHTS).append("] = vec4[](");
+        for (int i = 0; i < MAX_DYNAMIC_LIGHTS; i++) {
+            if (i > 0) hook.append(", ");
+            hook.append(DYN_LIGHT_NAME).append(i);
+        }
+        hook.append(");\n");
+        hook.append("\t\tvec4 colorfulDynColorArr[").append(MAX_DYNAMIC_LIGHTS).append("] = vec4[](");
+        for (int i = 0; i < MAX_DYNAMIC_LIGHTS; i++) {
+            if (i > 0) hook.append(", ");
+            hook.append(DYN_LIGHT_NAME).append("Color").append(i);
+        }
+        hook.append(");\n");
+        hook.append("\t\tfloat colorfulDynLevel = 0.0;\n"
+                + "\t\tvec3 colorfulDynColor = vec3(0.0);\n"
+                + "\t\tfor (int i = 0; i < " + DYN_LIGHT_NAME + "Count; i++) {\n"
+                + "\t\t\tvec4 dynLight = colorfulDynLights[i];\n"
+                + "\t\t\tfloat dynLevelI = dynLight.w - length(playerPos - dynLight.xyz);\n"
+                + "\t\t\tif (dynLevelI > colorfulDynLevel) {\n"
+                + "\t\t\t\tcolorfulDynLevel = dynLevelI;\n"
+                + "\t\t\t\tcolorfulDynColor = colorfulDynColorArr[i].rgb;\n"
+                + "\t\t\t}\n"
+                + "\t\t}\n"
+                + "\t\tif (colorfulDynLevel > 0.0) {\n"
+                + "\t\t\tfloat colorfulDynLm = min(colorfulDynLevel / 15.0, 1.0);\n"
+                + "\t\t\tfloat colorfulDynW = colorfulDynLm / max(colorfulDynLm + lmCoordM.x, 0.0001);\n"
+                + "\t\t\tblocklightCol = mix(blocklightCol, " + HELD_HELPER_NAME + "(colorfulDynColor), colorfulDynW);\n"
+                + "\t\t\tlmCoordM.x = max(lmCoordM.x, colorfulDynLm);\n"
+                + "\t\t}\n"
+                + "\t}\n");
+        return hook.toString();
     }
 
     private static String insertAfterVersion(String source, String insertion) {
