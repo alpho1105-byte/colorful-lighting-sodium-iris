@@ -2,6 +2,7 @@ package me.erykczy.colorfullighting.event;
 
 import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import me.erykczy.colorfullighting.common.EntityLightManager;
 import me.erykczy.colorfullighting.common.ViewArea;
 import net.minecraft.world.level.ChunkPos;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -25,6 +26,9 @@ public class ClientEventListener {
                 pos.z + renderDistance
         );
         engine.updateViewArea(viewArea);
+
+        // track entity light sources: diffs positions/colors and enqueues updates
+        EntityLightManager.tick(engine);
 
         // apply finished propagation results and mark render sections dirty; driven from
         // the tick instead of LevelLightEngine.runLightUpdates so it keeps working when

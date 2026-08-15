@@ -84,9 +84,18 @@ public class Config {
         float lightEmission = blockState.getLightEmission(level, pos)/15.0f;
 
         ColorEmitter config = findEmitter(blockState.getBlockKey(), blockState);
-        if(config != null)
-            return config.color().mul(config.overriddenBrightness4 < 0 ? lightEmission : config.overriddenBrightness4 /15.0f);
-        return defaultColor.mul(lightEmission);
+        ColorRGB4 blockColor = config != null
+                ? config.color().mul(config.overriddenBrightness4 < 0 ? lightEmission : config.overriddenBrightness4 /15.0f)
+                : defaultColor.mul(lightEmission);
+
+        // entity light occupying this position combines with whatever the block emits
+        ColorRGB4 entityColor = EntityLightManager.getEmitterAt(pos.getX(), pos.getY(), pos.getZ());
+        if(entityColor == null) return blockColor;
+        return ColorRGB4.fromRGB4(
+                Math.max(blockColor.red4, entityColor.red4),
+                Math.max(blockColor.green4, entityColor.green4),
+                Math.max(blockColor.blue4, entityColor.blue4)
+        );
     }
     public static ColorRGB4 getLightColor(@NotNull BlockStateAccessor blockState) {
         ColorEmitter config = findEmitter(blockState.getBlockKey(), blockState);
@@ -117,9 +126,14 @@ public class Config {
     }
     public static int getEmissionBrightness(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
         ColorEmitter config = findEmitter(blockState.getBlockKey(), blockState);
-        if(config != null && config.overriddenBrightness4 >= 0)
-            return config.overriddenBrightness4;
-        return blockState.getLightEmission(level, pos);
+        int blockBrightness = (config != null && config.overriddenBrightness4 >= 0)
+                ? config.overriddenBrightness4
+                : blockState.getLightEmission(level, pos);
+
+        ColorRGB4 entityColor = EntityLightManager.getEmitterAt(pos.getX(), pos.getY(), pos.getZ());
+        if(entityColor == null) return blockBrightness;
+        int entityBrightness = Math.max(entityColor.red4, Math.max(entityColor.green4, entityColor.blue4));
+        return Math.max(blockBrightness, entityBrightness);
     }
     public static int getEmissionBrightness(BlockStateAccessor blockState) {
         ColorEmitter config = findEmitter(blockState.getBlockKey(), blockState);

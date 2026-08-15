@@ -96,6 +96,43 @@ Entries from every loaded pack and mod are merged (higher packs win), and `F3 + 
 world — convenient for iterating on colors. Mods can ship the same files in their own resources to register
 their blocks; see erykczy's [colorful-glowstone](https://github.com/erykczy/colorful-glowstone) example mod.
 
+## Entity light sources
+
+*(this fork)* Entities can emit colored light too — the dynamic-lights approach (as popularized by
+LambDynamicLights) running on the colored engine: each client tick the mod tracks every visible entity's
+light and re-propagates when its position, level, or color changes. Purely a client-side visual; vanilla
+light values and gameplay are untouched.
+
+**Static per-type colors** — `assets/<namespace>/light/entity_emitters.json`, same color syntax as block
+emitters (a missing `;X` level suffix means full level 15):
+
+```json
+{
+	"minecraft:glow_squid": "#61f2d0;7",
+	"yourmod:will_o_wisp": "cyan;9"
+}
+```
+
+Shipped defaults: glow squids, blazes, magma cubes, and allays glow in their own colors, and **any burning
+entity casts fire-colored light**.
+
+**Stateful lights (Java API)** — when the light depends on entity state, register a provider; it is called
+every client tick, so returning a different value simply moves/re-colors the light:
+
+```java
+import me.erykczy.colorfullighting.api.*;
+
+EntityLightSources.register(MyEntities.LANTERN_SPIRIT.get(), entity -> {
+    LanternSpirit spirit = (LanternSpirit) entity;
+    if (!spirit.isLit()) return null;                            // no light
+    return EntityLight.fromDye(spirit.getDyeColor(), 11);        // dye name...
+    // or: EntityLight.fromHex("#80FF00", 11) / EntityLight.fromRGB8(128, 255, 0, 11)
+});
+```
+
+A registered provider replaces the JSON entry for that type. Providers run on the client thread and should
+be cheap, read-only lookups of synched entity data.
+
 ## Changes over upstream 1.3.0
 
 - Merged Sodium/Iris compatibility layer (formerly a separate mod), gated by a mixin plugin so it is inert

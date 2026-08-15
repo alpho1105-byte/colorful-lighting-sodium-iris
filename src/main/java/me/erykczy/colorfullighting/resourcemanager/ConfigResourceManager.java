@@ -1,8 +1,12 @@
 package me.erykczy.colorfullighting.resourcemanager;
 
 import me.erykczy.colorfullighting.ColorfulLighting;
+import me.erykczy.colorfullighting.api.EntityLight;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.Config;
+import me.erykczy.colorfullighting.common.EntityLightManager;
+import me.erykczy.colorfullighting.common.util.ColorRGB4;
+import net.minecraft.world.entity.EntityType;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -43,6 +47,7 @@ public class ConfigResourceManager implements ResourceManagerReloadListener {
         // keyed on the (order-insensitive) property map so later packs override same-key entries
         HashMap<ResourceLocation, LinkedHashMap<Map<String, String>, Config.ColorEmitter>> stateEmitters = new HashMap<>();
         HashMap<ResourceLocation, LinkedHashMap<Map<String, String>, Config.ColorFilter>> stateFilters = new HashMap<>();
+        HashMap<EntityType<?>, EntityLight> entityLights = new HashMap<>();
 
         // collect the distinct namespaces once: iterating getResourceStack per pack that
         // declares a namespace re-parses the same full stack once per such pack
@@ -65,15 +70,19 @@ public class ConfigResourceManager implements ResourceManagerReloadListener {
                 else
                     stateFilters.computeIfAbsent(key.block(), unused -> new LinkedHashMap<>()).put(key.properties(), filter);
             });
+
+            loadEntityFile(resourceManager, namespace, entityLights);
         }
 
         Config.setColorEmitters(emitters);
         Config.setColorFilters(filters);
         Config.setStateColorEmitters(sortBySpecificity(stateEmitters, Config.StateColorEmitter::new));
         Config.setStateColorFilters(sortBySpecificity(stateFilters, Config.StateColorFilter::new));
-        LOGGER.info("Loaded {} light emitter entries ({} state-specific) and {} filter entries ({} state-specific)",
+        EntityLightManager.setJsonLights(Map.copyOf(entityLights));
+        LOGGER.info("Loaded {} light emitter entries ({} state-specific), {} filter entries ({} state-specific), {} entity light entries",
                 emitters.size() + countEntries(stateEmitters), countEntries(stateEmitters),
-                filters.size() + countEntries(stateFilters), countEntries(stateFilters));
+                filters.size() + countEntries(stateFilters), countEntries(stateFilters),
+                entityLights.size());
 
         // the initial startup reload runs before FMLLoadComplete assigns the accessor
         if(ColorfulLighting.clientAccessor != null && ColorfulLighting.clientAccessor.getLevel() != null)
@@ -95,6 +104,34 @@ public class ConfigResourceManager implements ResourceManagerReloadListener {
             }
             catch (Exception e) {
                 LOGGER.warn("Failed to load {}s from pack {}", what, resource.sourcePackId(), e);
+            }
+        }
+    }
+
+    /**
+     * Loads "light/entity_emitters.json": entity type id -> color value (same syntax as
+     * emitter values; a missing ";X" brightness suffix means full level 15).
+     */
+    private void loadEntityFile(ResourceManager resourceManager, String namespace, HashMap<EntityType<?>, EntityLight> sink) {
+        for(Resource resource : resourceManager.getResourceStack(ResourceLocation.fromNamespaceAndPath(namespace, "light/entity_emitters.json"))) {
+            try (BufferedReader reader = resource.openAsReader()) {
+                JsonObject object = GSON.fromJson(reader, JsonObject.class);
+                for(var entry : object.entrySet()) {
+                    try {
+                        ResourceLocation key = ResourceLocation.parse(entry.getKey());
+                        if(!BuiltInRegistries.ENTITY_TYPE.containsKey(key)) throw new IllegalArgumentException("Couldn't find entity type "+key);
+                        Config.ColorEmitter emitter = Config.ColorEmitter.fromJsonElement(entry.getValue());
+                        ColorRGB4 color = emitter.color();
+                        int brightness = emitter.overriddenBrightness4() < 0 ? 15 : emitter.overriddenBrightness4();
+                        sink.put(BuiltInRegistries.ENTITY_TYPE.get(key), EntityLight.of(color.red4, color.green4, color.blue4, brightness));
+                    }
+                    catch (Exception e) {
+                        LOGGER.warn("Failed to load entity light entry {} from pack {}", entry.toString(), resource.sourcePackId(), e);
+                    }
+                }
+            }
+            catch (Exception e) {
+                LOGGER.warn("Failed to load entity lights from pack {}", resource.sourcePackId(), e);
             }
         }
     }

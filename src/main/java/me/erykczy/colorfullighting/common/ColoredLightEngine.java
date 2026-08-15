@@ -203,6 +203,7 @@ public class ColoredLightEngine {
         blockUpdateIncreaseRequests.clear();
         blockUpdateDecreaseRequests.clear();
         chunksWaitingForPropagation.clear();
+        EntityLightManager.reset(); // tracked entity emitters are re-added on the next tick
         lightPropagator = new LightPropagator();
         lightPropagatorThread = new Thread(lightPropagator, "ColorfulLighting-LightPropagator");
         lightPropagatorThread.setDaemon(true);
