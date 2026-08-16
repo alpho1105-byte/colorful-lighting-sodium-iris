@@ -89,21 +89,18 @@ config="colorful_lighting_compat.mixins.json"
     side="BOTH"
 
 # The merged Sodium/Iris compatibility layer activates only when these mods are present
-# (a mixin plugin skips their mixins otherwise). The ranges stay open-ended on purpose:
-# newer renderer builds usually keep the internals this layer hooks, so they are allowed
-# to run. Tested against Sodium 0.8.13-beta.1 and Iris 1.8.14-beta.1; if a future build
-# does move those internals, the layer reports it instead of silently misrendering.
+# (a mixin plugin skips their mixins otherwise), but when present the versions must match.
 [[dependencies.${mod_id}]]
     modId="sodium"
     type="optional"
-    versionRange="[0.8.13-beta.1,)"
+    versionRange="[0.8.13-beta.1,0.8.14)"
     ordering="AFTER"
     side="CLIENT"
 
 [[dependencies.${mod_id}]]
     modId="iris"
     type="optional"
-    versionRange="[1.8.14-beta.1,)"
+    versionRange="[1.8.14-beta.1,1.8.15)"
     ordering="AFTER"
     side="CLIENT"
 

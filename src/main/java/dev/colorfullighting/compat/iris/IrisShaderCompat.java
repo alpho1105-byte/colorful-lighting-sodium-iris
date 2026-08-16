@@ -14,125 +14,8 @@ public final class IrisShaderCompat {
     private static final String UV2_DECLARATION = "in ivec2 iris_UV2;";
     private static final String MAIN = "void main() {";
     private static final String LIGHTING_CALL = "DoLighting(color,";
-    // Packs in the MakeUp family build their block-light color in the vertex stage
-    // (candleColor) instead of exposing a fragment-side blocklightCol. Anchoring on the
-    // clamp that closes that composition keeps the patch working across pack revisions
-    // that change the clamp bounds or the terms feeding it.
-    private static final String CANDLE_ANCHOR = "candleColor = clamp(candleColor,";
-    private static final String CANDLE_ASSIGN = "candleColor = ";
-    private static final String HAND_LIGHT_ASSIGN = "vec3 handLight = ";
 
     private IrisShaderCompat() {
-    }
-
-    /** Fragment-side hooks (Complementary family): a swappable blocklightCol. */
-    private static boolean supportsFragmentTint(String fragmentSource) {
-        return fragmentSource != null
-                && fragmentSource.contains("vec3 blocklightCol")
-                && fragmentSource.contains(LIGHTING_CALL);
-    }
-
-    /** Vertex-side hooks (MakeUp family): a candleColor the tint can be folded into. */
-    public static boolean supportsVertexTint(String vertexSource) {
-        return vertexSource != null && candleAnchorEnd(vertexSource) >= 0;
-    }
-
-    /** End offset of the candleColor clamp statement, or -1 when the pack has none. */
-    private static int candleAnchorEnd(String source) {
-        int anchor = source.indexOf(CANDLE_ANCHOR);
-        if (anchor < 0) {
-            return -1;
-        }
-        int end = source.indexOf(';', anchor);
-        return end < 0 ? -1 : end + 1;
-    }
-
-    /**
-     * End offset of the statement that builds candleColor from the lightmap, i.e. the
-     * first assignment that is not one of the pack's later combining steps. The tint has
-     * to land here rather than after the clamp: by then the pack has already maxed the
-     * held-item light into candleColor, and recoloring that combined value repaints the
-     * held light with the block's hue wherever it dominates.
-     */
-    private static int candleBlockLightEnd(String source) {
-        int from = 0;
-        while (true) {
-            int assignment = source.indexOf(CANDLE_ASSIGN, from);
-            if (assignment < 0) {
-                return -1;
-            }
-            String rest = source.substring(assignment + CANDLE_ASSIGN.length());
-            if (!rest.startsWith("max(") && !rest.startsWith("clamp(")) {
-                int end = source.indexOf(';', assignment);
-                return end < 0 ? -1 : end + 1;
-            }
-            from = assignment + CANDLE_ASSIGN.length();
-        }
-    }
-
-    /**
-     * Gives the pack's own held-item light the color of the held emitter, the same way
-     * the fragment-lit family gets it through its held-light helper. Skipped when the
-     * pack has no held-light branch.
-     */
-    private static String tintHandLight(String source) {
-        int assignment = source.indexOf(HAND_LIGHT_ASSIGN);
-        if (assignment < 0) {
-            return source;
-        }
-        int end = source.indexOf(';', assignment);
-        if (end < 0) {
-            return source;
-        }
-
-        String tint = "\n\t\tvec3 colorfulHandColor = max(" + HELD_COLOR_NAME + ", "
-                + HELD_COLOR_NAME + "2);\n"
-                + "\t\tfloat colorfulHandStrength = max(max(colorfulHandColor.r,"
-                + " colorfulHandColor.g), colorfulHandColor.b);\n"
-                + "\t\tif (colorfulHandStrength > 0.001) {\n"
-                + "\t\t\tvec3 colorfulHandTint = pow(clamp(colorfulHandColor, vec3(0.0), vec3(1.0)), vec3(1.3));\n"
-                + "\t\t\tfloat colorfulHandTintPeak = max(max(colorfulHandTint.r,"
-                + " colorfulHandTint.g), colorfulHandTint.b);\n"
-                + "\t\t\tfloat colorfulHandPeak = max(max(handLight.r, handLight.g), handLight.b);\n"
-                + "\t\t\thandLight = colorfulHandTint * (colorfulHandPeak"
-                + " / max(colorfulHandTintPeak, 0.0001));\n"
-                + "\t\t}";
-        String patched = source.substring(0, end + 1) + tint + source.substring(end + 1);
-        if (patched.contains("uniform vec3 " + HELD_COLOR_NAME + ";")) {
-            return patched;
-        }
-        return insertAfterVersion(patched, "uniform vec3 " + HELD_COLOR_NAME + ";\n"
-                + "uniform vec3 " + HELD_COLOR_NAME + "2;\n");
-    }
-
-    /**
-     * Swaps the hue of the pack's vertex-stage block-light color while keeping the
-     * magnitude it derived from the lightmap, mirroring what the fragment-side
-     * blocklightCol swap does for the other pack family.
-     */
-    private static String tintCandleColor(String source, String colorExpression) {
-        if (candleAnchorEnd(source) < 0 || source.contains("colorfulCandleTint")) {
-            return source;
-        }
-        int anchorEnd = candleBlockLightEnd(source);
-        if (anchorEnd < 0) {
-            return source;
-        }
-
-        String tint = "\n\tvec3 colorfulCandleSource = " + colorExpression + ";\n"
-                + "\tfloat colorfulCandleStrength = max(max(colorfulCandleSource.r,"
-                + " colorfulCandleSource.g), colorfulCandleSource.b);\n"
-                + "\tif (colorfulCandleStrength > 0.0001) {\n"
-                + "\t\tvec3 colorfulCandleTint = pow(clamp(colorfulCandleSource, vec3(0.0), vec3(1.0)), vec3(1.3));\n"
-                + "\t\tfloat colorfulCandleTintPeak = max(max(colorfulCandleTint.r,"
-                + " colorfulCandleTint.g), colorfulCandleTint.b);\n"
-                + "\t\tfloat colorfulCandlePeak = max(max(candleColor.r, candleColor.g), candleColor.b);\n"
-                + "\t\tcandleColor = colorfulCandleTint * (colorfulCandlePeak"
-                + " / max(colorfulCandleTintPeak, 0.0001));\n"
-                + "\t}";
-        // the pack maxes its held-item light in after this point, so it keeps its own
-        // magnitude and only picks up the held emitter's color
-        return tintHandLight(source.substring(0, anchorEnd) + tint + source.substring(anchorEnd));
     }
 
     public static boolean supports(String vertexSource, String fragmentSource) {
@@ -140,7 +23,8 @@ public final class IrisShaderCompat {
                 && fragmentSource != null
                 && vertexSource.contains("mc_Entity")
                 && vertexSource.contains(MAIN)
-                && (supportsFragmentTint(fragmentSource) || supportsVertexTint(vertexSource));
+                && fragmentSource.contains("vec3 blocklightCol")
+                && fragmentSource.contains(LIGHTING_CALL);
     }
 
     public static boolean usesVanillaLightCoords(String vertexSource) {
@@ -151,7 +35,9 @@ public final class IrisShaderCompat {
     }
 
     public static boolean supportsVanillaTint(String fragmentSource) {
-        return supportsFragmentTint(fragmentSource);
+        return fragmentSource != null
+                && fragmentSource.contains("vec3 blocklightCol")
+                && fragmentSource.contains(LIGHTING_CALL);
     }
 
     /**
@@ -192,11 +78,9 @@ public final class IrisShaderCompat {
                                 + " = vec3(colorfulRed, colorfulGreen, colorfulBlue) / 255.0;\n"
                         : "")
                 + "\t}";
-        String patched = redirected.substring(0, main + MAIN.length())
+        return redirected.substring(0, main + MAIN.length())
                 + initialization
                 + redirected.substring(main + MAIN.length());
-        // vertex-lit packs consume the decoded color here instead of in the fragment
-        return withTint ? tintCandleColor(patched, VARYING_NAME) : patched;
     }
 
     public static String patchVertex(String source) {
@@ -213,11 +97,8 @@ public final class IrisShaderCompat {
                 + "\t\t? vec3(colorfulPacked.r, colorfulPacked.g, colorfulBlue) / 255.0\n"
                 + "\t\t: vec3(0.0);";
 
-        String patched = insertAfterVersion(source, declarations)
+        return insertAfterVersion(source, declarations)
                 .replaceFirst("void main\\(\\) \\{", MAIN + initialization);
-        // packs that light in the vertex stage are tinted here; the varying stays for
-        // the fragment-side family and is simply unused by these packs
-        return tintCandleColor(patched, VARYING_NAME);
     }
 
     public static String patchFragment(String source) {
