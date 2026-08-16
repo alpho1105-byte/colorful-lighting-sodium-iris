@@ -47,12 +47,15 @@ abstract class TransformPatcherMixin {
             return;
         }
 
-        // A varying cannot cross geometry or tessellation stages, so tint only direct
-        // vertex-to-fragment programs; everything else still gets the light sanitized.
-        boolean withTint = original.get(PatchShaderType.GEOMETRY) == null
+        // Vertex-lit packs fold the tint into the vertex stage, so they work even across
+        // geometry/tessellation stages; fragment-side packs need a varying, which cannot
+        // cross those stages. Programs matching neither still get the light sanitized.
+        boolean vertexTint = IrisShaderCompat.supportsVertexTint(transformedVertex);
+        boolean fragmentTint = original.get(PatchShaderType.GEOMETRY) == null
                 && original.get(PatchShaderType.TESS_CONTROL) == null
                 && original.get(PatchShaderType.TESS_EVAL) == null
                 && IrisShaderCompat.supportsVanillaTint(transformedFragment);
+        boolean withTint = vertexTint || fragmentTint;
 
         String patchedVertex = IrisShaderCompat.sanitizeVanillaVertex(transformedVertex, withTint);
         if (patchedVertex.equals(transformedVertex)) {
@@ -61,12 +64,11 @@ abstract class TransformPatcherMixin {
         }
 
         String patchedFragment = transformedFragment;
-        if (withTint) {
+        if (fragmentTint) {
             patchedFragment = IrisShaderCompat.patchFragment(transformedFragment);
-            if (patchedFragment.equals(transformedFragment)) {
+            if (patchedFragment.equals(transformedFragment) && !vertexTint) {
                 withTint = false;
                 patchedVertex = IrisShaderCompat.sanitizeVanillaVertex(transformedVertex, false);
-                patchedFragment = transformedFragment;
                 if (patchedVertex.equals(transformedVertex)) {
                     IrisPatchState.recordFailure();
                     return;

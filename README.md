@@ -24,15 +24,30 @@ separate `colorful_lighting_sodium_compat` jar.
 | | Version | Notes |
 |---|---|---|
 | Minecraft | **1.21.1** | NeoForge 21.1.x (tested with 21.1.241) |
-| [Sodium](https://www.curseforge.com/minecraft/mc-mods/sodium) | **0.8.13-beta.1** | *Optional.* Accepted range `[0.8.13-beta.1, 0.8.14)` |
-| [Iris](https://www.curseforge.com/minecraft/mc-mods/irisshaders) | **1.8.14-beta.1** | *Optional*, requires Sodium. Accepted range `[1.8.14-beta.1, 1.8.15)` |
+| [Sodium](https://www.curseforge.com/minecraft/mc-mods/sodium) | 0.8.13-beta.1 *(tested)* | *Optional.* Newer builds are allowed — see below |
+| [Iris](https://www.curseforge.com/minecraft/mc-mods/irisshaders) | 1.8.14-beta.1 *(tested)* | *Optional*, requires Sodium. Newer builds are allowed |
 | [ScalableLux](https://www.curseforge.com/minecraft/mc-mods/scalablelux) | 0.3.0-alpha.0.6 (tested) | *Optional.* Works with or without it |
 | [Sodium Extra](https://www.curseforge.com/minecraft/mc-mods/sodium-extra) | 0.9.3 (tested) | *Optional* |
 
 Sodium and Iris are **detected at runtime**: without them the mod uses the vanilla core-shader path (like
 upstream); with Sodium alone, terrain uses the compact-vertex path; with Sodium + Iris, the shader-pack
-integration activates as well. When they are installed, the versions must match the ranges above — the mod
-patches renderer internals and deliberately refuses untested renderer versions instead of breaking in-game.
+integration activates as well. The accepted version ranges are open-ended (`[tested version,)`) because
+newer renderer builds usually keep the internals this layer hooks. The versions listed above are what it
+was tested against; on a newer build the compatibility layer either works as usual or reports which hooks
+it could not apply in the log, rather than being blocked outright.
+
+### Shader packs
+
+Colored light is injected into the pack's own lighting, so it depends on hooks the pack provides. Two
+families are recognized, by content rather than by name — packs derived from either work automatically:
+
+| Family | Tested with | Colored light | Per-pixel entity lights |
+|---|---|---|---|
+| Fragment-lit (`blocklightCol`) | Complementary Unbound / Reimagined r5.8.1 | Terrain, entities, block entities, particles, held items | Yes |
+| Vertex-lit (`candleColor`) | MakeUp UltraFast 9.5d, E-LITE 5.1.1 | Terrain, entities, block entities, particles | Falls back to the block-light engine |
+
+Any other pack still renders correctly — the packed light is sanitized for every pack so nothing turns
+black or fullbright — it just keeps its own block-light color instead of the configured one.
 
 Notes for the full stack on NeoForge 1.21.1: Sodium 0.8.13 + Iris 1.8.14 additionally need the small
 community patch mod "Iris Sodium 0.8 Compat Patch" (`irissodiumcompat`) for their own interop. Shader-pack
