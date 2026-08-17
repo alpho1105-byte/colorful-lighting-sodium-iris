@@ -2,6 +2,7 @@ package dev.colorfullighting.compat.mixin;
 
 import dev.colorfullighting.compat.ColorfulLightingSodiumCompat;
 import dev.colorfullighting.compat.iris.IrisShaderCompat;
+import dev.colorfullighting.compat.iris.IrisPatchState;
 import net.irisshaders.iris.gl.blending.AlphaTest;
 import net.irisshaders.iris.pipeline.programs.SodiumPrograms;
 import net.irisshaders.iris.pipeline.transform.PatchShaderType;
@@ -41,6 +42,7 @@ abstract class IrisSodiumProgramsMixin {
         patched.put(PatchShaderType.VERTEX, IrisShaderCompat.patchVertex(vertex));
         patched.put(PatchShaderType.FRAGMENT, IrisShaderCompat.patchFragment(fragment));
         callbackInfo.setReturnValue(patched);
+        IrisPatchState.recordTerrainTint();
 
         if (colorfulLightingSodiumCompat$reported.compareAndSet(false, true)) {
             ColorfulLightingSodiumCompat.LOGGER.info(

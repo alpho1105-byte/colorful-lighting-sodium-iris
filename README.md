@@ -13,7 +13,7 @@ separate `colorful_lighting_sodium_compat` jar.
 - Colors are data-driven: resource packs (or other mods) define emitters and filters in JSON
 - Client side only — join any server, remove the mod at any time without touching the world
 - **Sodium terrain support**: colored light is carried through Sodium's compact chunk vertex format
-- **Iris shader-pack support**: compatible packs (e.g. Complementary) get colored block light injected into
+- **Iris shader-pack support**: compatible packs get colored block light injected into
   their own lighting, including entities, block entities, particles, and held-item light; other packs are
   automatically sanitized so nothing renders black or fullbright
 - Works with light-engine replacements such as ScalableLux/Starlight (block updates are fed from the
@@ -21,24 +21,22 @@ separate `colorful_lighting_sodium_compat` jar.
 
 ## Versions & compatibility
 
-| | Version | Notes |
+| | Tested version | Notes |
 |---|---|---|
 | Minecraft | **1.21.1** | NeoForge 21.1.x (tested with 21.1.241) |
-| [Sodium](https://www.curseforge.com/minecraft/mc-mods/sodium) | **0.8.13-beta.1** | *Optional.* Accepted range `[0.8.13-beta.1, 0.8.14)` |
-| [Iris](https://www.curseforge.com/minecraft/mc-mods/irisshaders) | **1.8.14-beta.1** | *Optional*, requires Sodium. Accepted range `[1.8.14-beta.1, 1.8.15)` |
+| [Sodium](https://www.curseforge.com/minecraft/mc-mods/sodium) | **0.8.13-beta.1** | *Optional.* Minimum `[0.8.13-beta.1,)`; no declared upper bound |
+| [Iris](https://www.curseforge.com/minecraft/mc-mods/irisshaders) | **1.8.14-beta.1** | *Optional*, requires Sodium. Minimum `[1.8.14-beta.1,)`; no declared upper bound |
 | [ScalableLux](https://www.curseforge.com/minecraft/mc-mods/scalablelux) | 0.3.0-alpha.0.6 (tested) | *Optional.* Works with or without it |
 | [Sodium Extra](https://www.curseforge.com/minecraft/mc-mods/sodium-extra) | 0.9.3 (tested) | *Optional* |
 
-Sodium and Iris are **detected at runtime**: without them the mod uses the vanilla core-shader path (like
-upstream); with Sodium alone, terrain uses the compact-vertex path; with Sodium + Iris, the shader-pack
-integration activates as well. When they are installed, the versions must match the ranges above — the mod
-patches renderer internals and deliberately refuses untested renderer versions instead of breaking in-game.
 
-Notes for the full stack on NeoForge 1.21.1: Sodium 0.8.13 + Iris 1.8.14 additionally need the small
-community patch mod "Iris Sodium 0.8 Compat Patch" (`irissodiumcompat`) for their own interop. Shader-pack
-colored lighting is tested with
+The versions listed above are the exact ones I tested against. While newer versions of Sodium and Iris are allowed and recommended—as they may include bug fixes for issues not covered in my tests—they haven't been practically tested yet. If you encounter any unexpected issues on newer builds, please try downgrading to the specified versions above.
+
+Sodium and Iris are detected at runtime: without them the mod uses the vanilla core-shader path (like upstream); with Sodium alone, terrain uses the compact-vertex path; with Sodium + Iris, the shader-pack integration activates as well.
+
 [Complementary Shaders — Unbound](https://modrinth.com/shader/complementary-unbound) r5.8.1 (Reimagined
-uses the same lighting core); packs without the recognized hooks fall back to correct-but-uncolored light.
+uses the same lighting core), MakeUp Ultra Fast 9.5d, and E-LITE 5.1.1. Packs without the recognized hooks
+fall back to correct-but-uncolored light.
 
 ## Adding new colored light sources
 

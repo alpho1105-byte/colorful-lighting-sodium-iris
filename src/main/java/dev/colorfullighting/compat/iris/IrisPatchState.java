@@ -13,6 +13,7 @@ public final class IrisPatchState {
     private static final AtomicInteger tintedPrograms = new AtomicInteger();
     private static final AtomicInteger sanitizeFailures = new AtomicInteger();
     private static final AtomicInteger dynamicLightPrograms = new AtomicInteger();
+    private static final AtomicInteger terrainTintPrograms = new AtomicInteger();
 
     private IrisPatchState() {
     }
@@ -22,6 +23,7 @@ public final class IrisPatchState {
         tintedPrograms.set(0);
         sanitizeFailures.set(0);
         dynamicLightPrograms.set(0);
+        terrainTintPrograms.set(0);
     }
 
     public static void recordSanitized(boolean withTint) {
@@ -33,6 +35,14 @@ public final class IrisPatchState {
 
     public static void recordDynamicLights() {
         dynamicLightPrograms.incrementAndGet();
+    }
+
+    public static void recordTerrainTint() {
+        terrainTintPrograms.incrementAndGet();
+    }
+
+    public static int terrainTintCount() {
+        return terrainTintPrograms.get();
     }
 
     /** Number of programs whose per-pixel dynamic entity-light hook was injected. */

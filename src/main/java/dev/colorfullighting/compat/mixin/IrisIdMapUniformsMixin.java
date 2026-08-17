@@ -38,6 +38,16 @@ abstract class IrisIdMapUniformsMixin {
         );
         uniforms.uniform1i(
                 UniformUpdateFrequency.PER_FRAME,
+                "colorfulLightingSodiumCompat_HeldLevel",
+                HeldLightColors::mainHandLevel
+        );
+        uniforms.uniform1i(
+                UniformUpdateFrequency.PER_FRAME,
+                "colorfulLightingSodiumCompat_HeldLevel2",
+                HeldLightColors::offHandLevel
+        );
+        uniforms.uniform1i(
+                UniformUpdateFrequency.PER_FRAME,
                 "colorfulLightingSodiumCompat_DynLightCount",
                 EntityLightManager::shaderLightCount
         );

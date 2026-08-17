@@ -29,6 +29,14 @@ public final class HeldLightColors {
         return colorFor(InteractionHand.OFF_HAND);
     }
 
+    public static int mainHandLevel() {
+        return levelFor(InteractionHand.MAIN_HAND);
+    }
+
+    public static int offHandLevel() {
+        return levelFor(InteractionHand.OFF_HAND);
+    }
+
     private static Vector3f colorFor(InteractionHand hand) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
@@ -51,5 +59,18 @@ public final class HeldLightColors {
         } catch (RuntimeException beforeConfigLoaded) {
             return new Vector3f();
         }
+    }
+
+    private static int levelFor(InteractionHand hand) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) {
+            return 0;
+        }
+
+        ItemStack stack = player.getItemInHand(hand);
+        if (!(stack.getItem() instanceof BlockItem blockItem)) {
+            return 0;
+        }
+        return Math.clamp(blockItem.getBlock().defaultBlockState().getLightEmission(), 0, 15);
     }
 }

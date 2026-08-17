@@ -7,6 +7,7 @@ import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
 import me.erykczy.colorfullighting.common.accessors.PlayerAccessor;
 import me.erykczy.colorfullighting.common.util.ColorRGB4;
 import me.erykczy.colorfullighting.common.util.ColorRGB8;
+import me.erykczy.colorfullighting.common.util.TrilinearLightSampler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
@@ -16,6 +17,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -24,6 +26,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * Most work is delegated to LightPropagator thread.
  */
 public class ColoredLightEngine {
+    private static final int INITIAL_REMESH_RADIUS_CHUNKS = 2;
+
     private ClientAccessor clientAccessor;
     private ColoredLightStorage storage = new ColoredLightStorage();
     private ViewArea viewArea = new ViewArea();
@@ -31,6 +35,8 @@ public class ColoredLightEngine {
     private final ConcurrentLinkedQueue<BlockRequests> blockUpdateIncreaseRequests = new ConcurrentLinkedQueue<>(); // those nearest to the player will be executed first
     private final ConcurrentLinkedQueue<ChunkPos> chunksWaitingForPropagation = new ConcurrentLinkedQueue<>(); // those nearest to the player will be executed first
     private final Set<Long> dirtySections = new HashSet<>();
+    private volatile boolean initialPropagationActive;
+    private final AtomicBoolean initialRemeshPending = new AtomicBoolean();
     private LightPropagator lightPropagator;
     private Thread lightPropagatorThread;
 
@@ -59,35 +65,7 @@ public class ColoredLightEngine {
      * so the sampled color fades smoothly with distance instead of snapping at range edges.
      */
     public ColorRGB8 sampleTrilinearLightColor(Vec3 pos) {
-        double gridX = pos.x - 0.5;
-        double gridY = pos.y - 0.5;
-        double gridZ = pos.z - 0.5;
-        int cornerX = (int) Math.floor(gridX);
-        int cornerY = (int) Math.floor(gridY);
-        int cornerZ = (int) Math.floor(gridZ);
-        double deltaX = gridX - cornerX;
-        double deltaY = gridY - cornerY;
-        double deltaZ = gridZ - cornerZ;
-
-        double red = 0.0, green = 0.0, blue = 0.0;
-        for (int dx = 0; dx <= 1; dx++) {
-            for (int dy = 0; dy <= 1; dy++) {
-                for (int dz = 0; dz <= 1; dz++) {
-                    ColorRGB4 corner = sampleLightColor(cornerX + dx, cornerY + dy, cornerZ + dz);
-                    double weight = (dx == 0 ? 1.0 - deltaX : deltaX)
-                            * (dy == 0 ? 1.0 - deltaY : deltaY)
-                            * (dz == 0 ? 1.0 - deltaZ : deltaZ);
-                    red += corner.red4 * weight;
-                    green += corner.green4 * weight;
-                    blue += corner.blue4 * weight;
-                }
-            }
-        }
-        return ColorRGB8.fromRGB8(
-                (int) Math.round(red * 17.0),
-                (int) Math.round(green * 17.0),
-                (int) Math.round(blue * 17.0)
-        );
+        return TrilinearLightSampler.sample(pos.x, pos.y, pos.z, this::sampleLightColor);
     }
 
 
@@ -95,6 +73,7 @@ public class ColoredLightEngine {
         LevelAccessor level = clientAccessor.getLevel();
         if(level == null) return;
         if(viewArea.equals(newArea)) return;
+        boolean initializing = viewArea.maxX < viewArea.minX || viewArea.maxZ < viewArea.minZ;
 
         // unload sections
         // remove propagation requests which are not in newArea's inner area
@@ -128,6 +107,8 @@ public class ColoredLightEngine {
             }
         }
         viewArea = newArea;
+        if(initializing && !chunksWaitingForPropagation.isEmpty())
+            initialPropagationActive = true;
     }
 
     public void onBlockLightPropertiesChanged(BlockPos blockPos) {
@@ -186,6 +167,17 @@ public class ColoredLightEngine {
             }
             dirtySections.clear();
         }
+
+        // Initial chunk meshes can finish after their first dirty notification and
+        // publish vertices sampled before colored propagation completed. Rebuild once
+        // after the nearby initial seed is committed, matching the corrective effect
+        // of an Iris shader reload without requiring the player to press R.
+        if(initialRemeshPending.compareAndSet(true, false)) {
+            level.rebuildAllSections();
+            ColorfulLighting.LOGGER.info(
+                    "Nearby initial colored-light propagation complete; rebuilt render sections"
+            );
+        }
     }
 
     public void reset() {
@@ -203,6 +195,8 @@ public class ColoredLightEngine {
         blockUpdateIncreaseRequests.clear();
         blockUpdateDecreaseRequests.clear();
         chunksWaitingForPropagation.clear();
+        initialPropagationActive = false;
+        initialRemeshPending.set(false);
         EntityLightManager.reset(); // tracked entity emitters are re-added on the next tick
         lightPropagator = new LightPropagator();
         lightPropagatorThread = new Thread(lightPropagator, "ColorfulLighting-LightPropagator");
@@ -304,6 +298,14 @@ public class ColoredLightEngine {
             return nearestChunkPos == null ? null : new NearestChunkResult(nearestChunkPos, minDistance * 16); // distanceBlocks is in blocks
         }
 
+        private boolean hasNearbyChunkWaitingForInitialPropagation(ChunkPos playerChunk) {
+            for(ChunkPos chunkPos : chunksWaitingForPropagation) {
+                if(chunkPos.getChessboardDistance(playerChunk) <= INITIAL_REMESH_RADIUS_CHUNKS)
+                    return true;
+            }
+            return false;
+        }
+
         /**
          * apply ready light changes to storage
          */
@@ -383,6 +385,11 @@ public class ColoredLightEngine {
                 propagateIncreases(level, increaseRequests);
                 // new chunks' light propagation is not synchronized with main thread
                 applyLightChangesDirectly();
+                if(initialPropagationActive
+                        && !hasNearbyChunkWaitingForInitialPropagation(player.getChunkPos())) {
+                    initialPropagationActive = false;
+                    initialRemeshPending.set(true);
+                }
             }
             else if(nearestBlockRequests != null) {
                 blockUpdateIncreaseRequests.remove(nearestBlockRequests.blockUpdate);

@@ -47,25 +47,38 @@ abstract class TransformPatcherMixin {
             return;
         }
 
-        // A varying cannot cross geometry or tessellation stages, so tint only direct
-        // vertex-to-fragment programs; everything else still gets the light sanitized.
-        boolean withTint = original.get(PatchShaderType.GEOMETRY) == null
+        // Complementary's extra varying cannot cross geometry or tessellation stages,
+        // so its fragment tint is direct-stage only. MakeUp's tint modifies an existing
+        // vertex output and therefore does not need an additional cross-stage varying.
+        boolean directVertexToFragment = original.get(PatchShaderType.GEOMETRY) == null
                 && original.get(PatchShaderType.TESS_CONTROL) == null
-                && original.get(PatchShaderType.TESS_EVAL) == null
+                && original.get(PatchShaderType.TESS_EVAL) == null;
+        boolean withFragmentTint = directVertexToFragment
                 && IrisShaderCompat.supportsVanillaTint(transformedFragment);
+        boolean withVertexTint = IrisShaderCompat.supportsVanillaVertexTint(transformedVertex);
+        boolean withTint = withFragmentTint || withVertexTint;
 
-        String patchedVertex = IrisShaderCompat.sanitizeVanillaVertex(transformedVertex, withTint);
+        String patchedVertex = IrisShaderCompat.sanitizeVanillaVertex(
+                transformedVertex,
+                withFragmentTint,
+                withVertexTint
+        );
         if (patchedVertex.equals(transformedVertex)) {
             IrisPatchState.recordFailure();
             return;
         }
 
         String patchedFragment = transformedFragment;
-        if (withTint) {
+        if (withFragmentTint) {
             patchedFragment = IrisShaderCompat.patchFragment(transformedFragment);
             if (patchedFragment.equals(transformedFragment)) {
-                withTint = false;
-                patchedVertex = IrisShaderCompat.sanitizeVanillaVertex(transformedVertex, false);
+                withFragmentTint = false;
+                withTint = withVertexTint;
+                patchedVertex = IrisShaderCompat.sanitizeVanillaVertex(
+                        transformedVertex,
+                        false,
+                        withVertexTint
+                );
                 patchedFragment = transformedFragment;
                 if (patchedVertex.equals(transformedVertex)) {
                     IrisPatchState.recordFailure();

@@ -93,4 +93,9 @@ public class LevelWrapper implements LevelAccessor {
     public void setSectionDirty(int x, int y, int z) {
         levelRenderer.setSectionDirty(x, y, z);
     }
+
+    @Override
+    public void rebuildAllSections() {
+        levelRenderer.allChanged();
+    }
 }

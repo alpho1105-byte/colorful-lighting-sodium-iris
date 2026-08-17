@@ -17,4 +17,7 @@ public interface LevelAccessor {
     BlockStateAccessor getBlockState(BlockPos pos);
     boolean isInBounds(BlockPos pos);
     void setSectionDirty(int x, int y, int z);
+
+    /** Rebuilds every visible render section after initial colored-light seeding. */
+    void rebuildAllSections();
 }
