@@ -20,6 +20,7 @@ public final class CompatMixinRouting {
     public static final String FLYWHEEL = "flywheel";
     public static final String CREATE = "create";
     public static final String VEIL = "veil";
+    public static final String FLEROVIUM = "flerovium";
 
     /** Mixin simple class name to the mod id whose presence gates it. */
     public static final Map<String, String> MIXIN_MODS = Map.ofEntries(
@@ -28,6 +29,7 @@ public final class CompatMixinRouting {
             Map.entry("CompactChunkVertexMixin", SODIUM),
             Map.entry("CreateSuperByteBufferMixin", CREATE),
             Map.entry("DefaultFluidRendererMixin", SODIUM),
+            Map.entry("FleroviumItemRendererMixin", FLEROVIUM),
             Map.entry("FlywheelColoredLitInstanceMixin", FLYWHEEL),
             Map.entry("IrisFormatAnalyzerMixin", IRIS),
             Map.entry("IrisIdMapUniformsMixin", IRIS),

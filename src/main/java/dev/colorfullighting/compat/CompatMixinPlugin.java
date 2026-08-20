@@ -20,6 +20,7 @@ public class CompatMixinPlugin implements IMixinConfigPlugin {
     private boolean flywheelLoaded;
     private boolean createLoaded;
     private boolean veilLoaded;
+    private boolean fleroviumLoaded;
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -29,6 +30,7 @@ public class CompatMixinPlugin implements IMixinConfigPlugin {
         flywheelLoaded = FMLLoader.getLoadingModList().getModFileById("flywheel") != null;
         createLoaded = FMLLoader.getLoadingModList().getModFileById("create") != null;
         veilLoaded = FMLLoader.getLoadingModList().getModFileById("veil") != null;
+        fleroviumLoaded = FMLLoader.getLoadingModList().getModFileById("flerovium") != null;
     }
 
     @Override
@@ -52,6 +54,7 @@ public class CompatMixinPlugin implements IMixinConfigPlugin {
             case CompatMixinRouting.FLYWHEEL -> flywheelLoaded;
             case CompatMixinRouting.CREATE -> createLoaded;
             case CompatMixinRouting.VEIL -> veilLoaded;
+            case CompatMixinRouting.FLEROVIUM -> fleroviumLoaded;
             default -> sodiumLoaded;
         };
     }

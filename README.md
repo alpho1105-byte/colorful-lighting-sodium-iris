@@ -38,7 +38,9 @@ compatibility layer actually applied — include it in bug reports.
 Optional mods the integrations were built and tested against (all detected at runtime, none required):
 [ScalableLux](https://modrinth.com/mod/scalablelux) 0.3.0-alpha, Sodium Extra 0.9.3,
 [Create](https://modrinth.com/mod/create) 6.0.10 (with its bundled Flywheel),
-[Sable](https://modrinth.com/mod/sable) 2.0.4, [Veil](https://modrinth.com/mod/veil) 4.4.1.
+[Sable](https://modrinth.com/mod/sable) 2.0.4, [Veil](https://modrinth.com/mod/veil) 4.4.1,
+[Flerovium](https://modrinth.com/mod/flerovium) 1.1.2 (its fast item path receives vanilla-format
+light - correct brightness, no tint on those items).
 Newer versions are allowed; if something breaks on a newer build, try the listed version first.
 
 ## Supported shader packs
