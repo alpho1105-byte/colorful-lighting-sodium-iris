@@ -11,10 +11,6 @@ public class ColorRGB8 {
         return new ColorRGB8(r, g, b);
     }
 
-    public static ColorRGB8 fromRGBFloat(float r, float g, float b) {
-        return new ColorRGB8((int)(r * 255), (int)(g * 255), (int)(b * 255));
-    }
-
     private ColorRGB8(int red, int green, int blue) {
         this.red = red;
         this.green = green;

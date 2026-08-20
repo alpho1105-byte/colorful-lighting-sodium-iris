@@ -34,6 +34,7 @@ public class ClientEventListener {
         // the tick instead of LevelLightEngine.runLightUpdates so it keeps working when
         // a light-engine replacement (e.g. ScalableLux/Starlight) overrides that method
         engine.onLightUpdate();
+
     }
 
     @SubscribeEvent

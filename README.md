@@ -13,9 +13,11 @@ separate `colorful_lighting_sodium_compat` jar.
 - Colors are data-driven: resource packs (or other mods) define emitters and filters in JSON
 - Client side only — join any server, remove the mod at any time without touching the world
 - **Sodium terrain support**: colored light is carried through Sodium's compact chunk vertex format
-- **Iris shader-pack support**: compatible packs get colored block light injected into
-  their own lighting, including entities, block entities, particles, and held-item light; other packs are
-  automatically sanitized so nothing renders black or fullbright
+- **Iris shader-pack support**: compatible packs (Complementary and MakeUp/E-LITE families) get colored
+  block light injected into their own lighting, including entities, block entities, particles, and
+  held-item light; other packs are automatically sanitized so nothing renders black or fullbright —
+  they show correct vanilla-brightness light without the tint. Adding tint support for another pack
+  family is a self-contained plugin class: see [docs/ADDING_SHADER_SUPPORT.md](docs/ADDING_SHADER_SUPPORT.md)
 - Works with light-engine replacements such as ScalableLux/Starlight (block updates are fed from the
   client level, not from vanilla light-engine internals)
 
@@ -49,18 +51,19 @@ resources), create a `light` folder next to `textures`/`models`:
 {
 	"minecraft:torch": "#00FF00",
 	"minecraft:red_candle": "red",
-	"minecraft:redstone_lamp": [ 0, 255, 255 ],
 	"minecraft:soul_torch": "purple;5",
 	"minecraft:oak_leaves": "light_blue;F"
 }
 ```
 
-- Color values: `"#RRGGBB"` hex, a dye name (`"red"`, `"light_blue"`, ...), or an `[r, g, b]` array.
-- Arrays: **integers are on the 0–255 scale, floats on the 0.0–1.0 scale** — `[255, 0, 0]` and
-  `[1.0, 0.0, 0.0]` are both pure red, but `[1, 0, 0]` is black.
-- An optional `;X` suffix (hex digit `0`–`F`) overrides the emitted light *level*; without it the block's
-  vanilla emission level is used. This lets non-emitting blocks (like the leaves above) emit light.
+- Color values: `"#RRGGBB"` hex (the canonical form) or a dye name (`"red"`, `"light_blue"`, ...).
+- An optional `;X` suffix — a **single hex digit `0`–`F`** (`a` = 10, `f` = 15; decimal `;10` is
+  rejected with a log warning) — overrides the emitted light *level*; without it the block's vanilla
+  emission level is used. This lets non-emitting blocks (like the leaves above) emit light.
 - Blocks that emit light but have no entry glow white.
+- *Deprecated:* an `[r, g, b]` array also parses (integers on the 0–255 scale rounded to the internal
+  0–15 range, floats on 0.0–1.0; optional 4th element = brightness on the same 0–255/0.0–1.0 scale)
+  but logs a deprecation warning — prefer the hex string.
 
 **Blockstate-specific colors** *(this fork)* — keys may carry blockstate properties using command syntax,
 which is how a block whose ID never changes (e.g. a lamp re-dyed by right-clicking) gets a different light
@@ -86,7 +89,7 @@ color per state:
 {
 	"minecraft:red_stained_glass": "#FF0000",
 	"minecraft:green_stained_glass": "red",
-	"minecraft:glass": [ 0, 255, 255 ]
+	"minecraft:glass": "#00FFFF"
 }
 ```
 
@@ -101,8 +104,15 @@ LambDynamicLights) running on the colored engine: each client tick the mod track
 light and re-propagates when its position, level, or color changes. Purely a client-side visual; vanilla
 light values and gameplay are untouched.
 
+> **Known tradeoff:** without a shader pack, moving lights use smooth distance falloff sampled from the
+> source's exact position and are **not occluded by blocks** (light can show through a thin wall) — the
+> same behavior as LambDynamicLights. The alternative, routing moving sources through the block engine,
+> restores occlusion but brings back a visible re-propagation flicker whenever a source crosses a block
+> boundary; this fork deliberately keeps the smooth path.
+
 **Static per-type colors** — `assets/<namespace>/light/entity_emitters.json`, same color syntax as block
-emitters (a missing `;X` level suffix means full level that is a hex number from 0 to F):
+emitters — `"#RRGGBB"` or a dye name, plus an optional `;X` level suffix (single hex digit `0`–`F`;
+missing suffix means full level 15):
 
 ```json
 {
@@ -143,6 +153,16 @@ be cheap, read-only lookups of synched entity data.
   colors baked into meshes); resilient, named, daemonized propagation thread
 - Config robustness: malformed entries can no longer abort the whole parse; dim hex colors are no longer
   rounded down to black; NPE guards on early ticks and the startup resource reload
+- 2.4.0 hardening pass (full-codebase review): thread-safe publication of config maps and the propagation
+  staging buffer; mixed-format AO blends no longer tint seams red at colored-data boundaries; translucent
+  quad splitting no longer reuses stale colored light; removing a source in a view-border chunk no longer
+  leaves permanent ghost light; colored sampling reaches the build-height limits; per-dimension shader
+  pipelines track their patch state independently; a burning player casts light under shader packs; held
+  items unknown to the mod keep the shader pack's own held-light definition; the config screen's Apply no
+  longer silently re-enables disabled entries; config corruption always creates a fresh backup; 2.3.x
+  `colorful_lighting-client.toml` entity light levels migrate into the v2 config; one canonical hex codec
+  behind every color surface; a startup log line states the detected Sodium/Iris versions and whether the
+  compat mixins actually applied
 
 ## Building
 

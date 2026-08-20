@@ -45,6 +45,10 @@ public class ViewArea {
     public boolean containsBlockInner(BlockPos pos) {
         return containsInner(SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ()));
     }
+    /** Whole allocated area, border included. */
+    public boolean containsBlock(BlockPos pos) {
+        return contains(SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ()));
+    }
 
     @Override
     public boolean equals(Object o) {

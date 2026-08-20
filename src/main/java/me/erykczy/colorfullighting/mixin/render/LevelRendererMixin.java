@@ -1,6 +1,7 @@
 package me.erykczy.colorfullighting.mixin.render;
 
 import me.erykczy.colorfullighting.ColorfulLighting;
+import dev.colorfullighting.compat.ColorfulLightGate;
 import me.erykczy.colorfullighting.accessors.BlockStateWrapper;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.Config;
@@ -23,7 +24,7 @@ public class LevelRendererMixin {
     @Inject(method = "getLightColor(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)I", at = @At("HEAD"), cancellable = true)
     private static void colorfullighting$getLightColor(BlockAndTintGetter level, BlockState state, BlockPos pos, CallbackInfoReturnable<Integer> cir) {
         ColoredLightEngine engine = ColoredLightEngine.getInstance();
-        if(engine == null || ColorfulLighting.clientAccessor == null) return; // vanilla path until the engine exists
+        if(engine == null || !ColorfulLightGate.canSampleColorful(level, pos)) return;
         int skyLight = level.getBrightness(LightLayer.SKY, pos);
         if(state.emissiveRendering(level, pos)) {
             LevelAccessor levelAccessor = ColorfulLighting.clientAccessor.getLevel();

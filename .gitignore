@@ -28,3 +28,8 @@ run-iris-test/
 run-vanilla-test/
 run-sodium-test/
 libs/
+
+# local dev references
+.img/
+.refmod/
+.vscode/

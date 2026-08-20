@@ -8,16 +8,24 @@
     "BlockRendererMixin",
     "ChunkVertexMixin",
     "CompactChunkVertexMixin",
+    "CreateSuperByteBufferMixin",
     "DefaultFluidRendererMixin",
+    "FlywheelColoredLitInstanceMixin",
     "IrisFormatAnalyzerMixin",
     "IrisIdMapUniformsMixin",
+    "IrisPipelineManagerMixin",
     "IrisRenderingPipelineMixin",
     "IrisSodiumProgramsMixin",
     "IrisXHFPModelVertexTypeMixin",
     "ResourcePackScannerMixin",
     "ShaderChunkRendererMixin",
+    "SodiumLevelSliceMixin",
     "SodiumLightDataAccessMixin",
-    "TransformPatcherMixin"
+    "SableClientSubLevelMixin",
+    "SableSubLevelMeshBuilderMixin",
+    "TransformPatcherMixin",
+    "VeilChunkVertexEncoderVertexMixin",
+    "VeilChunkVertexMixin"
   ],
   "injectors": {
     "defaultRequire": 1

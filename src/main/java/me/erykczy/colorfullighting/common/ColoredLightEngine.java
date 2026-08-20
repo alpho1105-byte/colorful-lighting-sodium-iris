@@ -13,6 +13,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,6 +49,20 @@ public class ColoredLightEngine {
         instance = new ColoredLightEngine(clientAccessor);
     }
 
+    // hoisted: a per-sample lambda would allocate on every terrain vertex
+    private final TrilinearLightSampler.PackedLookup packedStorageLookup =
+            (x, y, z) -> storage.getPackedEntry(x, y, z);
+    /** Missing sections read as black - the legacy non-null sampling contract. */
+    private final TrilinearLightSampler.PackedLookup lenientStorageLookup = (x, y, z) -> {
+        int packed = storage.getPackedEntry(x, y, z);
+        return packed == ColoredLightStorage.MISSING ? 0 : packed;
+    };
+    // world block-Y bounds of the current level, cached on the view-area update so the
+    // per-vertex sampling path does not fetch the level per call (volatile: read by
+    // meshing workers). MIN/MAX sentinels until the first update.
+    private volatile int minBlockY = Integer.MIN_VALUE;
+    private volatile int maxBlockY = Integer.MAX_VALUE;
+
     private ColoredLightEngine(ClientAccessor clientAccessor) {
         this.clientAccessor = clientAccessor;
         reset();
@@ -55,17 +70,104 @@ public class ColoredLightEngine {
 
     public ColorRGB4 sampleLightColor(BlockPos pos) { return sampleLightColor(pos.getX(), pos.getY(), pos.getZ()); }
     public ColorRGB4 sampleLightColor(int x, int y, int z) {
-        var entry = storage.getEntry(x, y, z);
-        if(entry == null) return ColorRGB4.fromRGB4(0, 0, 0);
-        return entry;
+        ColorRGB4 stored = sampleStoredLightColor(x, y, z);
+        ColorRGB4 dynamic = EntityLightManager.sampleLightColor(x + 0.5, y + 0.5, z + 0.5);
+        return maxChannels(stored, dynamic);
     }
+
+    private ColorRGB4 sampleStoredLightColor(int x, int y, int z) {
+        int packed = storage.getPackedEntry(x, y, z);
+        if(packed <= 0) return ColorRGB4.fromRGB4(0, 0, 0); // missing or black
+        return ColorRGB4.fromRGB4((packed >>> 8) & 0x0F, (packed >>> 4) & 0x0F, packed & 0x0F);
+    }
+
+    /** True when this position belongs to an allocated colored-light section. */
+    public boolean hasLightData(BlockPos pos) {
+        return storage.containsEntry(pos);
+    }
+
+    /**
+     * True when every section touched by a trilinear sample is available. Falling
+     * back when even one corner is missing prevents an absent section from being
+     * interpreted as real black light at view-area or virtual-sublevel boundaries.
+     */
+    public boolean hasLightData(Vec3 pos) {
+        return hasLightData(pos.x, pos.y, pos.z);
+    }
+
+    /** Primitive overload for the per-vertex meshing path (avoids a Vec3 per vertex). */
+    public boolean hasLightData(double posX, double posY, double posZ) {
+        int cornerX = (int) Math.floor(posX - 0.5);
+        int cornerY = (int) Math.floor(posY - 0.5);
+        int cornerZ = (int) Math.floor(posZ - 0.5);
+        // Corners above/below the world's section range are legitimately dark, not
+        // missing data: storage never allocates there, and treating them as absent made
+        // every sample touching the build limits fall back to vanilla light, drawing a
+        // color seam along top faces at max height and bottom faces at min height.
+        for(int dx = 0; dx <= 1; dx++) {
+            for(int dy = 0; dy <= 1; dy++) {
+                int y = cornerY + dy;
+                if(y < minBlockY || y > maxBlockY) continue;
+                for(int dz = 0; dz <= 1; dz++) {
+                    if(!storage.containsEntry(cornerX + dx, y, cornerZ + dz)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     /**
      * Mixes light color from blocks neighbouring given position using trilinear interpolation.
      * Weights are the true fractional offsets and black corners participate in the blend,
      * so the sampled color fades smoothly with distance instead of snapping at range edges.
      */
     public ColorRGB8 sampleTrilinearLightColor(Vec3 pos) {
-        return TrilinearLightSampler.sample(pos.x, pos.y, pos.z, this::sampleLightColor);
+        return sampleTrilinearLightColor(pos.x, pos.y, pos.z);
+    }
+
+    /** Legacy non-null contract: missing corners read as black instead of aborting. */
+    public ColorRGB8 sampleTrilinearLightColor(double posX, double posY, double posZ) {
+        ColorRGB8 stored = TrilinearLightSampler.sampleOrNull(
+                posX, posY, posZ, Integer.MIN_VALUE, Integer.MAX_VALUE, lenientStorageLookup
+        );
+        return combineWithDynamic(stored, posX, posY, posZ);
+    }
+
+    /**
+     * Fused presence check + sample for the per-vertex meshing path: one corner walk
+     * instead of the previous hasLightData + sample pair (halves the section probes).
+     * Null when any in-world corner's section is unallocated - the caller keeps its
+     * vanilla light, exactly like the old gate. Corners beyond the build-height
+     * limits are legitimately dark, not missing (see hasLightData).
+     */
+    @Nullable
+    public ColorRGB8 trySampleTrilinearLightColor(double posX, double posY, double posZ) {
+        ColorRGB8 stored = TrilinearLightSampler.sampleOrNull(
+                posX, posY, posZ, minBlockY, maxBlockY, packedStorageLookup
+        );
+        if(stored == null) return null;
+        return combineWithDynamic(stored, posX, posY, posZ);
+    }
+
+    private static ColorRGB8 combineWithDynamic(ColorRGB8 stored, double posX, double posY, double posZ) {
+        ColorRGB4 dynamic4 = EntityLightManager.sampleLightColor(posX, posY, posZ);
+        if(dynamic4.red4 == 0 && dynamic4.green4 == 0 && dynamic4.blue4 == 0) return stored;
+        ColorRGB8 dynamic = ColorRGB8.fromRGB4(dynamic4);
+        return ColorRGB8.fromRGB8(
+                Math.max(stored.red, dynamic.red),
+                Math.max(stored.green, dynamic.green),
+                Math.max(stored.blue, dynamic.blue)
+        );
+    }
+
+    private static ColorRGB4 maxChannels(ColorRGB4 first, ColorRGB4 second) {
+        return ColorRGB4.fromRGB4(
+                Math.max(first.red4, second.red4),
+                Math.max(first.green4, second.green4),
+                Math.max(first.blue4, second.blue4)
+        );
     }
 
 
@@ -77,31 +179,28 @@ public class ColoredLightEngine {
 
         // unload sections
         // remove propagation requests which are not in newArea's inner area
+        // increases stay inner-pruned: an increase executing after its chunk turned
+        // border would commit a wave truncated at the unallocated ring and freeze it
+        // (see onBlockLightPropertiesChanged); the pruned source heals on the border-
+        // to-inner transition. Decreases only remove light and stay valid area-wide.
         blockUpdateIncreaseRequests.removeIf(blockUpdate -> !newArea.containsBlockInner(blockUpdate.blockPos));
-        blockUpdateDecreaseRequests.removeIf(blockUpdate -> !newArea.containsBlockInner(blockUpdate.blockPos));
+        blockUpdateDecreaseRequests.removeIf(blockUpdate -> !newArea.containsBlock(blockUpdate.blockPos));
         chunksWaitingForPropagation.removeIf(chunkPos -> !newArea.containsInner(chunkPos.x, chunkPos.z));
-        // remove sections from storage
-        for(int x = viewArea.minX; x <= viewArea.maxX; ++x) {
-            for(int z = viewArea.minZ; z <= viewArea.maxZ; ++z) {
-                if(newArea.contains(x, z)) continue;
-                for(int y = level.getMinSectionY(); y <= level.getMaxSectionY(); y++) {
-                    storage.removeSection(SectionPos.asLong(x, y, z));
-                }
-            }
-        }
 
-        // load sections
-        // add sections to storage and queue chunks for propagation
+        // one dense-index republish handles both unload and load: overlapping columns
+        // keep their section objects (and light data), everything else starts fresh
+        minBlockY = level.getMinSectionY() << 4;
+        maxBlockY = (level.getMaxSectionY() << 4) + 15;
+        storage.rebuild(
+                newArea.minX, newArea.maxX,
+                level.getMinSectionY(), level.getMaxSectionY(),
+                newArea.minZ, newArea.maxZ
+        );
+
+        // queue newly-inner chunks for propagation
         for(int x = newArea.minX; x <= newArea.maxX; ++x) {
             for(int z = newArea.minZ; z <= newArea.maxZ; ++z) {
                 if(viewArea.containsInner(x, z)) continue; // old area already contains propagated section
-                boolean viewAreaContainsOuter = viewArea.contains(x, z);
-                if(!viewAreaContainsOuter) {
-                    for(int y = level.getMinSectionY(); y <= level.getMaxSectionY(); y++) {
-                        long pos = SectionPos.asLong(x, y, z);
-                        storage.addSection(pos);
-                    }
-                }
                 if(newArea.containsInner(x, z))
                     chunksWaitingForPropagation.add(new ChunkPos(x, z));
             }
@@ -116,15 +215,88 @@ public class ColoredLightEngine {
         if(level == null) return;
 
         SectionPos sectionPos = SectionPos.of(blockPos);
-        // light should be propagated only in inner chunks as
-        // full propagation needs light source's chunk and neighbours
-        if(!viewArea.containsInner(sectionPos.x(), sectionPos.z())) return;
+        // Decreases and pull-ins run for the whole allocated area, border included: a
+        // source removed in a border chunk must still launch its removal wave, or its
+        // stored light survives as a permanent ghost (the outer-to-inner transition
+        // re-propagates increases only, and propagateIncrease never lowers a value).
+        // New-emission increases stay inner-only: a source wave truncated at the
+        // unallocated ring commits its cells anyway, and the unchanged-value early-out
+        // in propagateIncrease then freezes the dark ring forever.
+        if(!viewArea.contains(sectionPos.x(), sectionPos.z())) return;
+        boolean inner = viewArea.containsInner(sectionPos.x(), sectionPos.z());
 
         BlockRequests increaseRequests = new BlockRequests(blockPos);
-        handleBlockUpdate(level, increaseRequests.increaseRequests, blockUpdateDecreaseRequests, blockPos);
+        handleBlockUpdate(level, increaseRequests.increaseRequests, blockUpdateDecreaseRequests, blockPos, inner);
         if(!increaseRequests.increaseRequests.isEmpty()) blockUpdateIncreaseRequests.add(increaseRequests);
     }
-    private void handleBlockUpdate(LevelAccessor level, Queue<LightUpdateRequest> increaseRequests, Queue<LightUpdateRequest> decreaseRequests, BlockPos blockPos) {
+
+    /**
+     * Requests remeshing for every loaded render section touched by a continuous
+     * moving light. No colored-light propagation is enqueued: render sampling reads
+     * the source's exact position directly.
+     */
+    public void markDynamicLightDirty(Vec3 position, int radius) {
+        LevelAccessor level = clientAccessor.getLevel();
+        if(level == null || radius <= 0) return;
+
+        int minSectionX = SectionPos.blockToSectionCoord((int) Math.floor(position.x - radius));
+        int maxSectionX = SectionPos.blockToSectionCoord((int) Math.floor(position.x + radius));
+        int minSectionY = Math.max(
+                level.getMinSectionY(),
+                SectionPos.blockToSectionCoord((int) Math.floor(position.y - radius))
+        );
+        int maxSectionY = Math.min(
+                level.getMaxSectionY(),
+                SectionPos.blockToSectionCoord((int) Math.floor(position.y + radius))
+        );
+        int minSectionZ = SectionPos.blockToSectionCoord((int) Math.floor(position.z - radius));
+        int maxSectionZ = SectionPos.blockToSectionCoord((int) Math.floor(position.z + radius));
+
+        synchronized (dirtySections) {
+            for(int sectionX = minSectionX; sectionX <= maxSectionX; sectionX++) {
+                for(int sectionZ = minSectionZ; sectionZ <= maxSectionZ; sectionZ++) {
+                    if(!viewArea.contains(sectionX, sectionZ)) continue;
+                    for(int sectionY = minSectionY; sectionY <= maxSectionY; sectionY++) {
+                        if(sectionIntersectsLight(sectionX, sectionY, sectionZ, position, radius))
+                            dirtySections.add(SectionPos.asLong(sectionX, sectionY, sectionZ));
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean sectionIntersectsLight(
+            int sectionX,
+            int sectionY,
+            int sectionZ,
+            Vec3 position,
+            int radius
+    ) {
+        double distanceX = distanceToInterval(
+                position.x,
+                SectionPos.sectionToBlockCoord(sectionX),
+                SectionPos.sectionToBlockCoord(sectionX + 1)
+        );
+        double distanceY = distanceToInterval(
+                position.y,
+                SectionPos.sectionToBlockCoord(sectionY),
+                SectionPos.sectionToBlockCoord(sectionY + 1)
+        );
+        double distanceZ = distanceToInterval(
+                position.z,
+                SectionPos.sectionToBlockCoord(sectionZ),
+                SectionPos.sectionToBlockCoord(sectionZ + 1)
+        );
+        return distanceX * distanceX + distanceY * distanceY + distanceZ * distanceZ
+                <= radius * radius;
+    }
+
+    private static double distanceToInterval(double value, double min, double max) {
+        if(value < min) return min - value;
+        if(value > max) return value - max;
+        return 0.0;
+    }
+    private void handleBlockUpdate(LevelAccessor level, Queue<LightUpdateRequest> increaseRequests, Queue<LightUpdateRequest> decreaseRequests, BlockPos blockPos, boolean allowNewEmission) {
         // read through the propagator's staging buffers, not just committed storage: a
         // freshly placed source may still be in flight, and seeding from the stale
         // committed value would skip the decrease wave and strand its light forever
@@ -135,8 +307,8 @@ public class ColoredLightEngine {
         else
             decreaseRequests.add(new LightUpdateRequest(blockPos, lightColor, false)); // block probably placed/replaced with non-transparent, light might need to be decreased
 
-        // propagate light if new blockState emits light
-        if(Config.getEmissionBrightness(level, blockPos, 0) > 0)
+        // propagate light if new blockState emits light (inner chunks only, see caller)
+        if(allowNewEmission && Config.getEmissionBrightness(level, blockPos, 0) > 0)
             increaseRequests.add(new LightUpdateRequest(blockPos, Config.getColorEmission(level, blockPos), false));
     }
     private void requestLightPullIn(Queue<LightUpdateRequest> increaseRequests, BlockPos blockPos) {
@@ -190,6 +362,11 @@ public class ColoredLightEngine {
             }
         }
         storage.clear();
+        // back to sentinels: stale bounds from a previous dimension would classify
+        // out-of-range corners as "legal black" while the empty storage should read
+        // as missing everywhere until the first view-area update
+        minBlockY = Integer.MIN_VALUE;
+        maxBlockY = Integer.MAX_VALUE;
         viewArea = new ViewArea();
         dirtySections.clear();
         blockUpdateIncreaseRequests.clear();
@@ -215,7 +392,11 @@ public class ColoredLightEngine {
         /**
          * light changes that are not yet ready to be visible on main thread
          */
-        private ConcurrentHashMap<BlockPos, ColorRGB4> lightChangesInProgress = new ConcurrentHashMap<>();
+        // volatile: reassigned by the propagator thread in markLightChangesReady after
+        // the ready lock is already released, while the client thread reads it lock-free
+        // in getLatestLightColor; without the fence the client can see a stale map and
+        // seed a decrease wave with (0,0,0), stranding the removed source's light
+        private volatile ConcurrentHashMap<BlockPos, ColorRGB4> lightChangesInProgress = new ConcurrentHashMap<>();
         /**
          * light changes ready to be visible on main thread
          */
@@ -493,7 +674,10 @@ public class ColoredLightEngine {
                 }
                 else {
                     ColorRGB4 neighbourLightColor = getLatestLightColor(neighbourPos);
-                    if(neighbourLightColor == null) return false; // section might have got unloaded and propagation should stop
+                    // a missing neighbour section (unallocated ring / unloaded) is just
+                    // dark; aborting the loop here would leave the remaining directions
+                    // of this edge block never repropagated
+                    if(neighbourLightColor == null) continue;
                     // if neighbour doesn't have any light
                     if(neighbourLightColor.red4 == 0 && neighbourLightColor.green4 == 0 && neighbourLightColor.blue4 == 0)
                         continue;

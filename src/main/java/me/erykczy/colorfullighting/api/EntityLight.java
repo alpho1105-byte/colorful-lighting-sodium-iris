@@ -24,9 +24,16 @@ public record EntityLight(int red4, int green4, int blue4, int brightness4) {
         return new EntityLight((red8 + 8) / 17, (green8 + 8) / 17, (blue8 + 8) / 17, brightness4);
     }
 
-    /** "#RRGGBB" (or "RRGGBB") hex color and light level (0..15). */
+    /**
+     * "#RRGGBB" (or "RRGGBB") hex color and light level (0..15). Exactly six hex
+     * digits - the wire format's canonical parser is EntityLightTextCodec; this stays
+     * self-contained only to keep the api package free of a common-package cycle.
+     */
     public static EntityLight fromHex(String hex, int brightness4) {
         String digits = hex.startsWith("#") ? hex.substring(1) : hex;
+        if(digits.length() != 6)
+            throw new IllegalArgumentException(
+                    "Expected \"#RRGGBB\" (six hexadecimal digits), got \"" + hex + "\"");
         int rgb = Integer.parseInt(digits, 16);
         return fromRGB8((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, brightness4);
     }

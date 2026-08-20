@@ -7,6 +7,7 @@ import javax.annotation.Nullable;
 import java.util.function.Consumer;
 
 public interface LevelAccessor {
+    Object getWrappedLevel();
     int getSectionsCount();
     int getMinSectionY();
     int getMaxSectionY();

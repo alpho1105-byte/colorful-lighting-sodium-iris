@@ -1,21 +1,20 @@
 package dev.colorfullighting.compat.iris;
 
-import me.erykczy.colorfullighting.common.Config;
-import me.erykczy.colorfullighting.common.util.ColorRGB4;
+import me.erykczy.colorfullighting.api.EntityLight;
+import me.erykczy.colorfullighting.common.EntityLightManager;
+import me.erykczy.colorfullighting.common.EntityLightManager.HeldLightDecision;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Block;
 import org.joml.Vector3f;
 
 /**
- * Supplies the Colorful Lighting emitter color of each held item to the shader-pack
- * uniforms registered in IrisIdMapUniformsMixin. Zero means "no colorful data" and the
- * patched GetHeldLighting falls back to the pack's own held-light color. A held block
- * reports the same color the engine would emit if it were placed; non-block items have
- * no emitter entry and the pack's uniform-driven brightness is left to decide.
+ * Supplies each held item's Colorful Lighting emitter color, level, and authority to
+ * the shader-pack uniforms registered in IrisIdMapUniformsMixin. Resolution is shared
+ * with the engine-backed item lights, including non-block resource definitions. The
+ * patched shader treats an authoritative hand as final (a zero level then means no
+ * held light), while a non-authoritative hand - an item the mod knows nothing about -
+ * keeps the pack's own held-light definition.
  */
 public final class HeldLightColors {
     private HeldLightColors() {
@@ -37,40 +36,38 @@ public final class HeldLightColors {
         return levelFor(InteractionHand.OFF_HAND);
     }
 
-    private static Vector3f colorFor(InteractionHand hand) {
+    public static int mainHandAuthority() {
+        return decisionFor(InteractionHand.MAIN_HAND).authoritative() ? 1 : 0;
+    }
+
+    public static int offHandAuthority() {
+        return decisionFor(InteractionHand.OFF_HAND).authoritative() ? 1 : 0;
+    }
+
+    private static HeldLightDecision decisionFor(InteractionHand hand) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
-            return new Vector3f();
+            return HeldLightDecision.DEFER;
         }
 
-        ItemStack stack = player.getItemInHand(hand);
-        if (!(stack.getItem() instanceof BlockItem blockItem)) {
-            return new Vector3f();
-        }
+        return EntityLightManager.heldLightDecision(
+                player.getItemInHand(hand),
+                player.isUnderWater()
+        );
+    }
 
-        Block block = blockItem.getBlock();
-        if (block.defaultBlockState().getLightEmission() <= 0) {
-            return new Vector3f();
-        }
-
-        try {
-            ColorRGB4 color = Config.getLightColor(block.builtInRegistryHolder().getKey());
-            return new Vector3f(color.red4 / 15.0F, color.green4 / 15.0F, color.blue4 / 15.0F);
-        } catch (RuntimeException beforeConfigLoaded) {
-            return new Vector3f();
-        }
+    private static Vector3f colorFor(InteractionHand hand) {
+        EntityLight light = decisionFor(hand).light();
+        if (light == null) return new Vector3f();
+        return new Vector3f(
+                light.red4() / 15.0F,
+                light.green4() / 15.0F,
+                light.blue4() / 15.0F
+        );
     }
 
     private static int levelFor(InteractionHand hand) {
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (player == null) {
-            return 0;
-        }
-
-        ItemStack stack = player.getItemInHand(hand);
-        if (!(stack.getItem() instanceof BlockItem blockItem)) {
-            return 0;
-        }
-        return Math.clamp(blockItem.getBlock().defaultBlockState().getLightEmission(), 0, 15);
+        EntityLight light = decisionFor(hand).light();
+        return light == null ? 0 : light.brightness4();
     }
 }

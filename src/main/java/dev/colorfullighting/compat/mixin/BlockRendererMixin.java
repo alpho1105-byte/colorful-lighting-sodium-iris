@@ -2,16 +2,15 @@ package dev.colorfullighting.compat.mixin;
 
 import dev.colorfullighting.compat.ColorfulLightGate;
 import dev.colorfullighting.compat.sodium.ColorfulLightVertex;
-import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import me.erykczy.colorfullighting.common.util.ColorRGB8;
 import me.erykczy.colorfullighting.common.util.PackedLightData;
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.pipeline.BlockRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.material.Material;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
 import net.caffeinemc.mods.sodium.client.render.frapi.mesh.MutableQuadViewImpl;
 import net.caffeinemc.mods.sodium.client.render.frapi.render.AbstractBlockRenderContext;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.phys.Vec3;
+
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -24,6 +23,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class BlockRendererMixin extends AbstractBlockRenderContext {
     @Unique
     private int colorfulLightingSodiumCompat$vertexIndex;
+    // quad-invariant values hoisted out of the per-vertex redirect (4x per quad on
+    // every meshing worker); BlockRenderer instances are per-worker, so plain fields
+    // are thread-safe here
+    @Unique
+    private double colorfulLightingSodiumCompat$normalX;
+    @Unique
+    private double colorfulLightingSodiumCompat$normalY;
+    @Unique
+    private double colorfulLightingSodiumCompat$normalZ;
 
     @Inject(method = "bufferQuad", at = @At("HEAD"))
     private void colorfulLightingSodiumCompat$beginQuad(
@@ -33,6 +41,10 @@ abstract class BlockRendererMixin extends AbstractBlockRenderContext {
             CallbackInfo callbackInfo
     ) {
         colorfulLightingSodiumCompat$vertexIndex = 0;
+        Direction lightFace = quad.lightFace();
+        colorfulLightingSodiumCompat$normalX = lightFace == null ? 0.0 : lightFace.getStepX() * 0.5;
+        colorfulLightingSodiumCompat$normalY = lightFace == null ? 0.0 : lightFace.getStepY() * 0.5;
+        colorfulLightingSodiumCompat$normalZ = lightFace == null ? 0.0 : lightFace.getStepZ() * 0.5;
     }
 
     @Redirect(
@@ -51,31 +63,17 @@ abstract class BlockRendererMixin extends AbstractBlockRenderContext {
             Material material
     ) {
         int vertexIndex = colorfulLightingSodiumCompat$vertexIndex++;
-        Direction lightFace = quad.lightFace();
-        ColoredLightEngine engine = ColoredLightEngine.getInstance();
-        int colorfulLight;
-        if(engine != null && vertexIndex < 4) {
-            double normalX = lightFace == null ? 0.0 : lightFace.getStepX() * 0.5;
-            double normalY = lightFace == null ? 0.0 : lightFace.getStepY() * 0.5;
-            double normalZ = lightFace == null ? 0.0 : lightFace.getStepZ() * 0.5;
-            Vec3 samplePos = new Vec3(
-                    pos.getX() + quad.x(vertexIndex) + normalX,
-                    pos.getY() + quad.y(vertexIndex) + normalY,
-                    pos.getZ() + quad.z(vertexIndex) + normalZ
-            );
-            int skyLight = (vanillaLight >>> 20) & 0xF;
-            colorfulLight = PackedLightData.packData(
-                    skyLight,
-                    engine.sampleTrilinearLightColor(samplePos)
-            );
-        }
-        else {
-            BlockPos samplePos = lightFace == null ? pos : pos.relative(lightFace);
-            colorfulLight = ColorfulLightGate.sampleColorful(
-                    level,
-                    level.getBlockState(samplePos),
-                    samplePos
-            );
+        int colorfulLight = vanillaLight;
+        if(vertexIndex < 4) {
+            double sampleX = pos.getX() + quad.x(vertexIndex) + colorfulLightingSodiumCompat$normalX;
+            double sampleY = pos.getY() + quad.y(vertexIndex) + colorfulLightingSodiumCompat$normalY;
+            double sampleZ = pos.getZ() + quad.z(vertexIndex) + colorfulLightingSodiumCompat$normalZ;
+            // fused gate + sample: null keeps vanilla light (wrong scope or missing data)
+            ColorRGB8 colored = ColorfulLightGate.trySampleColorful(level, sampleX, sampleY, sampleZ);
+            if(colored != null) {
+                int skyLight = (vanillaLight >>> 20) & 0xF;
+                colorfulLight = PackedLightData.packData(skyLight, colored);
+            }
         }
         ((ColorfulLightVertex) vertex).colorfulLightingSodiumCompat$setLight(colorfulLight);
         vertex.light = vanillaLight;

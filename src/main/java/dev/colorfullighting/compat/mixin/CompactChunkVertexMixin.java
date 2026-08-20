@@ -1,6 +1,7 @@
 package dev.colorfullighting.compat.mixin;
 
 import dev.colorfullighting.compat.sodium.ColorfulChunkVertexEncoder;
+import dev.colorfullighting.compat.sodium.ColorfulChunkVertexType;
 import net.caffeinemc.mods.sodium.client.gl.attribute.GlVertexFormat;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.impl.CompactChunkVertex;
@@ -14,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = CompactChunkVertex.class, remap = false)
-abstract class CompactChunkVertexMixin {
+abstract class CompactChunkVertexMixin implements ColorfulChunkVertexType {
     @Shadow
     @Final
     @Mutable

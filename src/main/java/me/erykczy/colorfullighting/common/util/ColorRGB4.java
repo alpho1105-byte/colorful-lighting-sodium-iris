@@ -1,7 +1,6 @@
 package me.erykczy.colorfullighting.common.util;
 
 public class ColorRGB4 {
-    public static final int SIZE = 12;
     public int red4, green4, blue4;
 
     public static ColorRGB4 fromRGB8(ColorRGB8 other) {
@@ -15,10 +14,6 @@ public class ColorRGB4 {
 
     public static ColorRGB4 fromRGB4(int r, int g, int b) {
         return new ColorRGB4(r, g, b);
-    }
-
-    public static ColorRGB4 fromRGBFloat(float r, float g, float b) {
-        return new ColorRGB4((int)(r * 15), (int)(g * 15), (int)(b * 15));
     }
 
     private ColorRGB4(int r4, int g4, int b4) {
@@ -49,5 +44,10 @@ public class ColorRGB4 {
                 other.red4 == red4 &&
                 other.green4 == green4 &&
                 other.blue4 == blue4;
+    }
+
+    @Override
+    public int hashCode() {
+        return (red4 * 31 + green4) * 31 + blue4;
     }
 }

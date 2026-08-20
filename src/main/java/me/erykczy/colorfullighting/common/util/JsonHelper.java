@@ -1,6 +1,7 @@
 package me.erykczy.colorfullighting.common.util;
 
 import com.google.gson.JsonElement;
+import me.erykczy.colorfullighting.common.EntityLightTextCodec;
 import net.minecraft.world.item.DyeColor;
 
 import java.awt.*;
@@ -9,9 +10,7 @@ public abstract class JsonHelper {
     public static ColorRGB4 getColor4FromString(String string) {
         ColorRGB4 color = getColor4FromDyeName(string);
         if(color != null) return color;
-        color = getColor4FromHexString(string);
-        if(color != null) return color;
-        return color;
+        return getColor4FromHexString(string);
     }
 
     public static ColorRGB4 getColor4FromDyeName(String dyeName) {
@@ -24,17 +23,11 @@ public abstract class JsonHelper {
     }
 
     public static ColorRGB4 getColor4FromHexString(String string) {
-        if(string.length() != 6+1 || !string.startsWith("#")) return null;
-        long colorFromHex;
-        try {
-            colorFromHex = Long.parseLong(string.substring(1), 16);
-        } catch (NumberFormatException e) {
-            return null; // malformed hex like "#GGRRBB" must not abort the whole parse
-        }
-        long blue = colorFromHex & 0xFF;
-        long green = (colorFromHex >> 8) & 0xFF;
-        long red = (colorFromHex >> 16) & 0xFF;
-        return ColorRGB4.fromRGB8((int)red, (int)green, (int)blue);
+        // canonical hex parsing lives in EntityLightTextCodec; this wrapper adapts the
+        // lenient null-returning contract resource loading relies on
+        int rgb = EntityLightTextCodec.tryParseRgb8(string);
+        if(rgb < 0) return null;
+        return ColorRGB4.fromRGB8((rgb >>> 16) & 0xFF, (rgb >>> 8) & 0xFF, rgb & 0xFF);
     }
 
     public static ColorRGB4 getColor4FromJsonElements(JsonElement red, JsonElement green, JsonElement blue) {
@@ -49,11 +42,14 @@ public abstract class JsonHelper {
     public static Integer getInt4FromJsonElement(JsonElement element) {
         int value;
         try {
-            value = element.getAsBigInteger().intValue()/17;
+            // rounding division, matching ColorRGB4.fromRGB8: plain /17 truncated
+            // every 8-bit value below 17 to zero, silently turning a configured
+            // component (or an array brightness like 15) into "no light"
+            value = (element.getAsBigInteger().intValue() + 8) / 17;
         }
         catch (NumberFormatException e) {
             try {
-                value = (int)(element.getAsFloat()*15.0f);
+                value = Math.round(element.getAsFloat() * 15.0f);
             } catch (RuntimeException e2) {
                 return null; // non-numeric value must not abort the whole parse
             }

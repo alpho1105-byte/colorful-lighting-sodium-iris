@@ -1,6 +1,7 @@
 package dev.colorfullighting.compat.mixin;
 
 import dev.colorfullighting.compat.iris.HeldLightColors;
+import dev.colorfullighting.compat.iris.family.ShaderPatchNames;
 import me.erykczy.colorfullighting.common.EntityLightManager;
 import net.irisshaders.iris.gl.uniform.UniformHolder;
 import net.irisshaders.iris.gl.uniform.UniformUpdateFrequency;
@@ -28,40 +29,52 @@ abstract class IrisIdMapUniformsMixin {
     ) {
         uniforms.uniform3f(
                 UniformUpdateFrequency.PER_FRAME,
-                "colorfulLightingSodiumCompat_HeldColor",
+                ShaderPatchNames.HELD_COLOR_NAME,
                 HeldLightColors::mainHand
         );
         uniforms.uniform3f(
                 UniformUpdateFrequency.PER_FRAME,
-                "colorfulLightingSodiumCompat_HeldColor2",
+                ShaderPatchNames.HELD_COLOR_NAME + "2",
                 HeldLightColors::offHand
         );
         uniforms.uniform1i(
                 UniformUpdateFrequency.PER_FRAME,
-                "colorfulLightingSodiumCompat_HeldLevel",
+                ShaderPatchNames.HELD_LEVEL_NAME,
                 HeldLightColors::mainHandLevel
         );
         uniforms.uniform1i(
                 UniformUpdateFrequency.PER_FRAME,
-                "colorfulLightingSodiumCompat_HeldLevel2",
+                ShaderPatchNames.HELD_LEVEL_NAME + "2",
                 HeldLightColors::offHandLevel
         );
         uniforms.uniform1i(
                 UniformUpdateFrequency.PER_FRAME,
-                "colorfulLightingSodiumCompat_DynLightCount",
+                ShaderPatchNames.HELD_AUTHORITY_NAME,
+                HeldLightColors::mainHandAuthority
+        );
+        uniforms.uniform1i(
+                UniformUpdateFrequency.PER_FRAME,
+                ShaderPatchNames.HELD_AUTHORITY_NAME + "2",
+                HeldLightColors::offHandAuthority
+        );
+        uniforms.uniform1i(
+                UniformUpdateFrequency.PER_FRAME,
+                ShaderPatchNames.DYN_LIGHT_NAME + "Count",
                 EntityLightManager::shaderLightCount
         );
-        // one vec4 uniform per light slot: Iris array uniforms upload a single vec4
-        for (int i = 0; i < 8; i++) {
+        // one vec4 uniform per light slot: Iris array uniforms upload a single vec4;
+        // names and slot count come from ShaderPatchNames, the same constants the
+        // shader families emit, so the two sides cannot drift
+        for (int i = 0; i < ShaderPatchNames.MAX_DYNAMIC_LIGHTS; i++) {
             final int slot = i;
             uniforms.uniform4f(
                     UniformUpdateFrequency.PER_FRAME,
-                    "colorfulLightingSodiumCompat_DynLight" + slot,
+                    ShaderPatchNames.DYN_LIGHT_NAME + slot,
                     () -> EntityLightManager.shaderLightPosition(slot)
             );
             uniforms.uniform4f(
                     UniformUpdateFrequency.PER_FRAME,
-                    "colorfulLightingSodiumCompat_DynLightColor" + slot,
+                    ShaderPatchNames.DYN_LIGHT_NAME + "Color" + slot,
                     () -> EntityLightManager.shaderLightColor(slot)
             );
         }

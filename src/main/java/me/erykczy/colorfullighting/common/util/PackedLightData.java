@@ -1,6 +1,19 @@
 package me.erykczy.colorfullighting.common.util;
 
 public class PackedLightData {
+    // Colorful packed layout, the single source of truth for these bit positions.
+    // Mirrored by PackedLightCompat's allocation-free decoders and the GLSL decodes in
+    // colored_light.glsl / IrisShaderCompat; keep all of them in sync when changing.
+    public static final int RED8_SHIFT = 0;
+    public static final int GREEN8_SHIFT = 8;
+    public static final int SKY4_SHIFT = 16;
+    public static final int BLUE8_SHIFT = 20;
+    public static final int MARKER_SHIFT = 28;
+    public static final int MARKER = 0xF;
+    // Vanilla packed-light layout (LightTexture.pack): 4-bit block and sky nibbles.
+    public static final int VANILLA_BLOCK4_SHIFT = 4;
+    public static final int VANILLA_SKY4_SHIFT = 20;
+
     public int skyLight4;
     public int red8;
     public int blue8;
@@ -9,23 +22,24 @@ public class PackedLightData {
 
     public static int packData(int skyLight4, ColorRGB8 color) { return packData(skyLight4, color.red, color.green, color.blue); }
     public static int packData(int skyLight4, int red8, int green8, int blue8) {
-        //blockLight = Math.clamp(blockLight, 0, 15);
         skyLight4 = Math.clamp(skyLight4, 0, 15);
         red8 = Math.clamp(red8, 0, 255);
         green8 = Math.clamp(green8, 0, 255);
         blue8 = Math.clamp(blue8, 0, 255);
-        int alpha4 = 15;
-        // TODO: big-endian
-        return red8 | green8 << 8 | skyLight4 << 16 | blue8 << 20 | alpha4 << 28;
+        return red8 << RED8_SHIFT
+                | green8 << GREEN8_SHIFT
+                | skyLight4 << SKY4_SHIFT
+                | blue8 << BLUE8_SHIFT
+                | MARKER << MARKER_SHIFT;
     }
 
     public static PackedLightData unpackData(int packedData) {
         PackedLightData data = new PackedLightData();
-        data.red8 = (packedData) & 0xFF;
-        data.green8 = (packedData >>> 8) & 0xFF;
-        data.skyLight4 = (packedData >>> 16) & 0xF;
-        data.blue8 = (packedData >>> 20) & 0xFF;
-        data.alpha4 = (packedData >>> 28) & 0xF;
+        data.red8 = (packedData >>> RED8_SHIFT) & 0xFF;
+        data.green8 = (packedData >>> GREEN8_SHIFT) & 0xFF;
+        data.skyLight4 = (packedData >>> SKY4_SHIFT) & 0xF;
+        data.blue8 = (packedData >>> BLUE8_SHIFT) & 0xFF;
+        data.alpha4 = (packedData >>> MARKER_SHIFT) & 0xF;
         return data;
     }
 
@@ -39,7 +53,7 @@ public class PackedLightData {
      * combining helpers, and reading them as the colorful layout would produce garbage.
      */
     public static boolean isColorful(int packedData) {
-        return (packedData >>> 28) == 0xF;
+        return (packedData >>> MARKER_SHIFT) == MARKER;
     }
 
     public static int blend(int lightColor0, int lightColor1, int lightColor2, int lightColor3) {
@@ -54,10 +68,12 @@ public class PackedLightData {
         if (isBlack(lightColor1)) lightColor1 = lightColor3;
         if (isBlack(lightColor2)) lightColor2 = lightColor3;
 
-        var data0 = unpackData(lightColor0);
-        var data1 = unpackData(lightColor1);
-        var data2 = unpackData(lightColor2);
-        var data3 = unpackData(lightColor3);
+        // mixed formats occur at colored-data boundaries (view-area edge, build
+        // limits): any vanilla corner must be converted, not decoded as colorful
+        var data0 = unpackToColorful(lightColor0);
+        var data1 = unpackToColorful(lightColor1);
+        var data2 = unpackToColorful(lightColor2);
+        var data3 = unpackToColorful(lightColor3);
 
         return packData(
                 (data0.skyLight4 + data1.skyLight4 + data2.skyLight4 + data3.skyLight4) >> 2,
@@ -76,10 +92,10 @@ public class PackedLightData {
                     + (lightColor2 & 0xFF) * weight2 + (lightColor3 & 0xFF) * weight3) & 0xFF;
             return sky << 16 | block;
         }
-        var data0 = unpackData(lightColor0);
-        var data1 = unpackData(lightColor1);
-        var data2 = unpackData(lightColor2);
-        var data3 = unpackData(lightColor3);
+        var data0 = unpackToColorful(lightColor0);
+        var data1 = unpackToColorful(lightColor1);
+        var data2 = unpackToColorful(lightColor2);
+        var data3 = unpackToColorful(lightColor3);
 
         return packData(
                 (int)(data0.skyLight4 * weight0 + data1.skyLight4 * weight1 + data2.skyLight4 * weight2 + data3.skyLight4 * weight3),
@@ -92,12 +108,12 @@ public class PackedLightData {
     public static int max(int lightColor0, int lightColor1) {
         if(!isColorful(lightColor0) && !isColorful(lightColor1)) {
             // vanilla-format inputs: per-component max in the vanilla layout
-            int block = Math.max((lightColor0 >>> 4) & 0xF, (lightColor1 >>> 4) & 0xF);
-            int sky = Math.max((lightColor0 >>> 20) & 0xF, (lightColor1 >>> 20) & 0xF);
-            return (block << 4) | (sky << 20);
+            int block = Math.max((lightColor0 >>> VANILLA_BLOCK4_SHIFT) & 0xF, (lightColor1 >>> VANILLA_BLOCK4_SHIFT) & 0xF);
+            int sky = Math.max((lightColor0 >>> VANILLA_SKY4_SHIFT) & 0xF, (lightColor1 >>> VANILLA_SKY4_SHIFT) & 0xF);
+            return (block << VANILLA_BLOCK4_SHIFT) | (sky << VANILLA_SKY4_SHIFT);
         }
-        var firstData = unpackData(lightColor0);
-        var secondData = unpackData(lightColor1);
+        var firstData = unpackToColorful(lightColor0);
+        var secondData = unpackToColorful(lightColor1);
 
         return packData(
                 Math.max(firstData.skyLight4, secondData.skyLight4),
@@ -105,5 +121,20 @@ public class PackedLightData {
                 Math.max(firstData.green8, secondData.green8),
                 Math.max(firstData.blue8, secondData.blue8)
         );
+    }
+
+    /** Unpacks either format, converting vanilla block light to neutral RGB. */
+    private static PackedLightData unpackToColorful(int packedLight) {
+        if(isColorful(packedLight)) {
+            return unpackData(packedLight);
+        }
+
+        int blockLight8 = ((packedLight >>> VANILLA_BLOCK4_SHIFT) & 0xF) * 17;
+        return unpackData(packData(
+                (packedLight >>> VANILLA_SKY4_SHIFT) & 0xF,
+                blockLight8,
+                blockLight8,
+                blockLight8
+        ));
     }
 }

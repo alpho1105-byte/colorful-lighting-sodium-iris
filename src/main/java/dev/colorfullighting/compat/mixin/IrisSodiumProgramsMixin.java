@@ -39,7 +39,11 @@ abstract class IrisSodiumProgramsMixin {
 
         Map<PatchShaderType, String> patched = new EnumMap<>(PatchShaderType.class);
         patched.putAll(original);
-        patched.put(PatchShaderType.VERTEX, IrisShaderCompat.patchVertex(vertex));
+        // the vertex must know whether the fragment will consume the RGB varying,
+        // otherwise a MakeUp-style vertex paired with a Complementary-style fragment
+        // leaves the fragment's `in` without a matching `out`
+        boolean fragmentTint = IrisShaderCompat.supportsVanillaTint(fragment);
+        patched.put(PatchShaderType.VERTEX, IrisShaderCompat.patchVertex(vertex, fragmentTint));
         patched.put(PatchShaderType.FRAGMENT, IrisShaderCompat.patchFragment(fragment));
         callbackInfo.setReturnValue(patched);
         IrisPatchState.recordTerrainTint();

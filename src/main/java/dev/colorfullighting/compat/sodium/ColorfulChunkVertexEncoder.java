@@ -19,9 +19,6 @@ public final class ColorfulChunkVertexEncoder {
             true
     );
 
-    private static final int POSITION_MAX_VALUE = 1_048_575;
-    private static final int TEXTURE_MAX_VALUE = 32_767;
-
     private ColorfulChunkVertexEncoder() {
     }
 
@@ -48,19 +45,19 @@ public final class ColorfulChunkVertexEncoder {
         textureCenterV *= 0.25F;
 
         for (ChunkVertexEncoder.Vertex vertex : vertices) {
-            int x = quantizePosition(vertex.x);
-            int y = quantizePosition(vertex.y);
-            int z = quantizePosition(vertex.z);
-            int u = encodeTexture(textureCenterU, vertex.u);
-            int v = encodeTexture(textureCenterV, vertex.v);
-            int light = encodeLight(vertex.light);
+            int x = CompactVertexPacking.quantizePosition(vertex.x);
+            int y = CompactVertexPacking.quantizePosition(vertex.y);
+            int z = CompactVertexPacking.quantizePosition(vertex.z);
+            int u = CompactVertexPacking.encodeTexture(textureCenterU, vertex.u);
+            int v = CompactVertexPacking.encodeTexture(textureCenterV, vertex.v);
+            int light = CompactVertexPacking.encodeLight(vertex.light);
             int colorfulLight = ((ColorfulLightVertex) vertex).colorfulLightingSodiumCompat$getLight();
 
-            MemoryUtil.memPutInt(pointer, packPositionHi(x, y, z));
-            MemoryUtil.memPutInt(pointer + 4L, packPositionLo(x, y, z));
+            MemoryUtil.memPutInt(pointer, CompactVertexPacking.packPositionHi(x, y, z));
+            MemoryUtil.memPutInt(pointer + 4L, CompactVertexPacking.packPositionLo(x, y, z));
             MemoryUtil.memPutInt(pointer + 8L, ColorARGB.mulRGB(vertex.color, vertex.ao));
-            MemoryUtil.memPutInt(pointer + 12L, packTexture(u, v));
-            MemoryUtil.memPutInt(pointer + 16L, packLightAndData(light, material, sectionIndex));
+            MemoryUtil.memPutInt(pointer + 12L, CompactVertexPacking.packTexture(u, v));
+            MemoryUtil.memPutInt(pointer + 16L, CompactVertexPacking.packLightAndData(light, material, sectionIndex));
             MemoryUtil.memPutInt(pointer + 20L, colorfulLight);
             pointer += STRIDE;
         }
@@ -68,39 +65,4 @@ public final class ColorfulChunkVertexEncoder {
         return pointer;
     }
 
-    private static int quantizePosition(float value) {
-        return (int) (((8.0F + value) / 32.0F) * 1_048_576.0F) & POSITION_MAX_VALUE;
-    }
-
-    private static int packPositionHi(int x, int y, int z) {
-        return ((x >>> 10) & 0x3FF)
-                | (((y >>> 10) & 0x3FF) << 10)
-                | (((z >>> 10) & 0x3FF) << 20);
-    }
-
-    private static int packPositionLo(int x, int y, int z) {
-        return (x & 0x3FF)
-                | ((y & 0x3FF) << 10)
-                | ((z & 0x3FF) << 20);
-    }
-
-    private static int encodeTexture(float center, float value) {
-        int bias = value < center ? 1 : -1;
-        int encoded = Math.round(value * 32_768.0F) + bias;
-        return (encoded & TEXTURE_MAX_VALUE) | ((bias >>> 31) << 15);
-    }
-
-    private static int packTexture(int u, int v) {
-        return (u & 0xFFFF) | ((v & 0xFFFF) << 16);
-    }
-
-    private static int encodeLight(int light) {
-        int sky = Math.clamp((light >>> 16) & 0xFF, 8, 248);
-        int block = Math.clamp(light & 0xFF, 8, 248);
-        return block | (sky << 8);
-    }
-
-    private static int packLightAndData(int light, int material, int sectionIndex) {
-        return (light & 0xFFFF) | ((material & 0xFF) << 16) | ((sectionIndex & 0xFF) << 24);
-    }
 }

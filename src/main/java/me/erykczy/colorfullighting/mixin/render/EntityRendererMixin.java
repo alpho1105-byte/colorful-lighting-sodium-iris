@@ -11,6 +11,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -32,10 +33,11 @@ public abstract class EntityRendererMixin {
     @Inject(method = "getPackedLightCoords", at = @At("HEAD"), cancellable = true)
     private <T extends Entity>void colorfullighting$getPackedLightCoords(T entity, float partialTicks, CallbackInfoReturnable<Integer> cir) {
         ColoredLightEngine engine = ColoredLightEngine.getInstance();
-        if(engine == null) return; // vanilla path until the engine exists
-        BlockPos blockpos = BlockPos.containing(entity.getLightProbePosition(partialTicks));
+        Vec3 lightProbePosition = entity.getLightProbePosition(partialTicks);
+        if(engine == null || !ColorfulLightGate.canSampleColorful(entity.level(), lightProbePosition)) return;
+        BlockPos blockpos = BlockPos.containing(lightProbePosition);
         int skyLight = getSkyLightLevel(entity, blockpos);
-        ColorRGB8 color = engine.sampleTrilinearLightColor(entity.getLightProbePosition(partialTicks));
+        ColorRGB8 color = engine.sampleTrilinearLightColor(lightProbePosition);
 
         // keep calling the renderer's own light virtuals so vanilla and modded overrides
         // (glow squid dimming, fullbright projectiles, ...) survive: any brightness the

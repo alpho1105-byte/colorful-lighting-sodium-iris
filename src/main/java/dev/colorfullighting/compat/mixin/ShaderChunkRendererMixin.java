@@ -1,13 +1,13 @@
 package dev.colorfullighting.compat.mixin;
 
 import dev.colorfullighting.compat.ColorfulLightingSodiumCompat;
+import dev.colorfullighting.compat.sodium.ColorfulChunkVertexType;
 import net.caffeinemc.mods.sodium.client.gl.shader.GlShader;
 import net.caffeinemc.mods.sodium.client.gl.shader.ShaderConstants;
 import net.caffeinemc.mods.sodium.client.gl.shader.ShaderLoader;
 import net.caffeinemc.mods.sodium.client.gl.shader.ShaderType;
 import net.caffeinemc.mods.sodium.client.render.chunk.ShaderChunkRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.shader.ChunkShaderOptions;
-import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.impl.CompactChunkVertex;
 import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,7 +31,7 @@ abstract class ShaderChunkRendererMixin {
             ChunkShaderOptions options
     ) {
         ResourceLocation selected = location;
-        if (options.vertexType() instanceof CompactChunkVertex) {
+        if (options.vertexType() instanceof ColorfulChunkVertexType) {
             selected = ResourceLocation.fromNamespaceAndPath(
                     ColorfulLightingSodiumCompat.MOD_ID,
                     location.getPath()

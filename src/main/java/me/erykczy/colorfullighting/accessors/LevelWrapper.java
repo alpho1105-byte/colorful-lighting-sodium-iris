@@ -23,6 +23,7 @@ public class LevelWrapper implements LevelAccessor {
         this.levelRenderer = levelRenderer;
     }
 
+    @Override
     public ClientLevel getWrappedLevel() {
         return level;
     }

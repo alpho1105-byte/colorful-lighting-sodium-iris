@@ -1,0 +1,17 @@
+{
+	"minecraft:torch": { "water_sensitive": true },
+	"minecraft:redstone_torch": { "water_sensitive": true },
+	"minecraft:soul_torch": { "water_sensitive": true },
+	"minecraft:campfire": { "water_sensitive": true },
+	"minecraft:soul_campfire": { "water_sensitive": true },
+	"minecraft:spectral_arrow": "#fff3a7;8",
+	"minecraft:prismarine_crystals": "#e0f7f7;A",
+	"minecraft:nether_star": "#e0f7f7;8",
+	"minecraft:lava_bucket": { "light": "orange;F", "water_sensitive": true },
+	"minecraft:glowstone_dust": "#fff3a7;A",
+	"minecraft:glow_ink_sac": "#61f2d0;C",
+	"minecraft:glow_berries": "#bfff00;E",
+	"minecraft:fire_charge": { "light": "#ff894d;A", "water_sensitive": true },
+	"minecraft:blaze_powder": "#ff894d;A",
+	"minecraft:blaze_rod": "#ff894d;A"
+}

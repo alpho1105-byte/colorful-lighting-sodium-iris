@@ -1,11 +1,15 @@
 package dev.colorfullighting.compat;
 
 import dev.colorfullighting.compat.iris.IrisPatchState;
+import dev.colorfullighting.compat.level.RenderLevelScope;
+import me.erykczy.colorfullighting.ColorfulLighting;
+import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
+import me.erykczy.colorfullighting.common.util.ColorRGB8;
 import net.irisshaders.iris.api.v0.IrisApi;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.BlockAndTintGetter;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Shader packs replace the vanilla core shaders that decode Colorful Lighting's packed
@@ -23,14 +27,62 @@ public final class ColorfulLightGate {
     private ColorfulLightGate() {
     }
 
-    public static int sampleColorful(BlockAndTintGetter level, BlockState state, BlockPos pos) {
-        return LevelRenderer.getLightColor(level, state, pos);
+    /**
+     * The colored engine stores data for one live client level. Render snapshots
+     * backed by that level are safe; Ponder, schematic, and other virtual worlds
+     * must retain their own vanilla/fake lighting.
+     */
+    public static boolean canSampleColorful(Object renderedLevel, BlockPos pos) {
+        ColoredLightEngine engine = ColoredLightEngine.getInstance();
+        return engine != null && canSampleColorful(renderedLevel, engine.hasLightData(pos));
+    }
+
+    public static boolean canSampleColorful(Object renderedLevel, Vec3 pos) {
+        return canSampleColorful(renderedLevel, pos.x, pos.y, pos.z);
+    }
+
+    /** Primitive overload for callers that gate and sample separately. */
+    public static boolean canSampleColorful(Object renderedLevel, double x, double y, double z) {
+        ColoredLightEngine engine = ColoredLightEngine.getInstance();
+        return engine != null
+                && scopeAllows(renderedLevel)
+                && engine.hasLightData(x, y, z);
     }
 
     /**
-     * True while entity lights should render as per-pixel shader point lights instead of
-     * feeding the block engine (the pack's GetHeldLighting hook was injected and a pack
-     * is active). Never touches Iris classes when Iris is absent.
+     * Fused gate + sample for the per-vertex meshing path: one corner walk instead of
+     * the previous hasLightData-then-sample pair. Null means "keep vanilla light" -
+     * wrong level scope, no engine, or an unallocated corner section, exactly the
+     * cases the boolean gate used to reject.
+     */
+    @Nullable
+    public static ColorRGB8 trySampleColorful(Object renderedLevel, double x, double y, double z) {
+        ColoredLightEngine engine = ColoredLightEngine.getInstance();
+        if (engine == null || !scopeAllows(renderedLevel)) {
+            return null;
+        }
+        return engine.trySampleTrilinearLightColor(x, y, z);
+    }
+
+    private static boolean canSampleColorful(Object renderedLevel, boolean hasColoredLightData) {
+        return hasColoredLightData && scopeAllows(renderedLevel);
+    }
+
+    private static boolean scopeAllows(Object renderedLevel) {
+        if (ColorfulLighting.clientAccessor == null) {
+            return false;
+        }
+
+        LevelAccessor activeLevel = ColorfulLighting.clientAccessor.getLevel();
+        return activeLevel != null
+                && RenderLevelScope.belongsTo(renderedLevel, activeLevel.getWrappedLevel());
+    }
+
+    /**
+     * True while entity lights may additionally render as smooth shader point lights
+     * (the pack's GetHeldLighting hook was injected and a pack is active). CPU moving
+     * lights are disabled in this mode to avoid rendering the same source twice. Never
+     * touches Iris classes when Iris is absent.
      */
     public static boolean shaderEntityLightsActive() {
         return IRIS_LOADED

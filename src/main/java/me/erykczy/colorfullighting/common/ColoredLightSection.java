@@ -20,11 +20,17 @@ public class ColoredLightSection {
 
     public ColorRGB4 get(int x, int y, int z) { return get(getColorIndex(x, y, z)); }
     public ColorRGB4 get(int colorIndex) {
+        int value = getPacked(colorIndex);
+        return ColorRGB4.fromRGB4((value >>> 8) & 0x0F, (value >>> 4) & 0x0F, value & 0x0F);
+    }
+
+    /** Allocation-free variant: 12-bit {@code r<<8|g<<4|b}; an untouched section is 0. */
+    public int getPacked(int x, int y, int z) { return getPacked(getColorIndex(x, y, z)); }
+    public int getPacked(int colorIndex) {
         short[] entries = data;
         if(entries == null)
-            return ColorRGB4.fromRGB4(0, 0, 0);
-        int value = entries[colorIndex] & 0xFFF;
-        return ColorRGB4.fromRGB4((value >>> 8) & 0x0F, (value >>> 4) & 0x0F, value & 0x0F);
+            return 0;
+        return entries[colorIndex] & 0xFFF;
     }
 
     public void set(int x, int y, int z, ColorRGB4 value) { set(getColorIndex(x, y, z), value); }

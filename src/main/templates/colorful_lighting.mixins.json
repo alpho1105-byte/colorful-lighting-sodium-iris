@@ -8,6 +8,7 @@
     "render.LiquidBlockRendererMixin",
     "render.LevelRendererMixin",
     "render.LevelRendererLightColorMixin",
+    "render.RenderChunkRegionMixin",
     "render.AmbientOcclusionFaceMixin",
     "render.EntityRendererMixin",
     "render.BrightnessCombinerMixin"

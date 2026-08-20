@@ -2,7 +2,8 @@ package dev.colorfullighting.compat.mixin;
 
 import dev.colorfullighting.compat.sodium.ColorfulLightVertex;
 import dev.colorfullighting.compat.sodium.FluidVertexLight;
-import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import dev.colorfullighting.compat.ColorfulLightGate;
+import me.erykczy.colorfullighting.common.util.ColorRGB8;
 import net.caffeinemc.mods.sodium.client.model.color.ColorProvider;
 import net.caffeinemc.mods.sodium.client.model.quad.ModelQuadView;
 import net.caffeinemc.mods.sodium.client.model.quad.ModelQuadViewMutable;
@@ -19,7 +20,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
-import net.minecraft.world.phys.Vec3;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -48,6 +48,9 @@ abstract class DefaultFluidRendererMixin {
     @Unique
     private int colorfulLightingSodiumCompat$vertexIndex;
 
+    @Unique
+    private LevelSlice colorfulLightingSodiumCompat$level;
+
     @Inject(method = "render", at = @At("HEAD"))
     private void colorfulLightingSodiumCompat$captureLevel(
             LevelSlice level,
@@ -67,6 +70,7 @@ abstract class DefaultFluidRendererMixin {
         colorfulLightingSodiumCompat$worldX = blockPos.getX();
         colorfulLightingSodiumCompat$worldY = blockPos.getY();
         colorfulLightingSodiumCompat$worldZ = blockPos.getZ();
+        colorfulLightingSodiumCompat$level = level;
     }
 
     @Inject(method = "updateQuad", at = @At("HEAD"))
@@ -114,31 +118,32 @@ abstract class DefaultFluidRendererMixin {
     ) {
         int vertexIndex = colorfulLightingSodiumCompat$vertexIndex++;
         int colorfulLight = vanillaLight;
-        ColoredLightEngine engine = ColoredLightEngine.getInstance();
         ModelQuadView quad = colorfulLightingSodiumCompat$quad;
-        if (engine != null && quad != null && vertexIndex < 4) {
+        if (quad != null && vertexIndex < 4) {
             Direction lightFace = colorfulLightingSodiumCompat$lightFace;
-            Vec3 samplePos = new Vec3(
-                    FluidVertexLight.sampleCoordinate(
-                            colorfulLightingSodiumCompat$worldX,
-                            quad.getX(vertexIndex),
-                            lightFace.getStepX()
-                    ),
-                    FluidVertexLight.sampleCoordinate(
-                            colorfulLightingSodiumCompat$worldY,
-                            quad.getY(vertexIndex),
-                            lightFace.getStepY()
-                    ),
-                    FluidVertexLight.sampleCoordinate(
-                            colorfulLightingSodiumCompat$worldZ,
-                            quad.getZ(vertexIndex),
-                            lightFace.getStepZ()
-                    )
+            double sampleX = FluidVertexLight.sampleCoordinate(
+                    colorfulLightingSodiumCompat$worldX,
+                    quad.getX(vertexIndex),
+                    lightFace.getStepX()
             );
-            colorfulLight = FluidVertexLight.packWithVanillaSky(
-                    vanillaLight,
-                    engine.sampleTrilinearLightColor(samplePos)
+            double sampleY = FluidVertexLight.sampleCoordinate(
+                    colorfulLightingSodiumCompat$worldY,
+                    quad.getY(vertexIndex),
+                    lightFace.getStepY()
             );
+            double sampleZ = FluidVertexLight.sampleCoordinate(
+                    colorfulLightingSodiumCompat$worldZ,
+                    quad.getZ(vertexIndex),
+                    lightFace.getStepZ()
+            );
+            // fused gate + sample: null keeps vanilla light (wrong scope or missing data)
+            ColorRGB8 colored = ColorfulLightGate.trySampleColorful(
+                    colorfulLightingSodiumCompat$level,
+                    sampleX, sampleY, sampleZ
+            );
+            if(colored != null) {
+                colorfulLight = FluidVertexLight.packWithVanillaSky(vanillaLight, colored);
+            }
         }
         ((ColorfulLightVertex) vertex).colorfulLightingSodiumCompat$setLight(colorfulLight);
         vertex.light = vanillaLight;
