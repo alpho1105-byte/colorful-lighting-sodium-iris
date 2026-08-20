@@ -5,8 +5,6 @@ lighting work with **Sodium** and **Iris shader packs**, adds dynamic entity/ite
 editor, and fixes a number of upstream rendering and light-propagation defects at the source. One jar replaces
 both the original `colorful_lighting` jar and the separate `colorful_lighting_sodium_compat` jar.
 
-![a creeper in a cave lit by lava](https://cdn.modrinth.com/data/cached_images/db98e8b5f28311e2c7edcd6e9cd00a82ba62f22b_0.webp)
-
 ## Features
 
 - **Colored block light** with per-block colors and stained-glass-style filters, propagated by a dedicated
