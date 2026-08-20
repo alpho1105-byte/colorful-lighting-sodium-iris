@@ -2,8 +2,7 @@
 
 A fork of [erykczy's Colorful Lighting](https://github.com/erykczy/colorful-lighting) (MIT) that makes colored
 lighting work with **Sodium** and **Iris shader packs**, adds dynamic entity/item lights and an in-game light
-editor, and fixes a number of upstream rendering and light-propagation defects at the source. One jar replaces
-both the original `colorful_lighting` jar and the separate `colorful_lighting_sodium_compat` jar.
+editor, and fixes a number of upstream rendering and light-propagation defects at the source.
 
 ## Features
 
@@ -44,12 +43,9 @@ Newer versions are allowed; if something breaks on a newer build, try the listed
 
 ## Supported shader packs
 
-| Pack | Tested | Coverage |
-|---|---|---|
-| [Complementary](https://modrinth.com/shader/complementary-unbound) Unbound / Reimagined | r5.8.1 | Full: blocks, entities, particles, held items (color + level), per-pixel moving entity lights |
-| [BSL](https://modrinth.com/shader/bsl-shaders) | v10.1.1 | Blocks, entities, particles, per-pixel moving entity lights; held-item level is authoritative and the hand light's share is re-hued (BSL's hand light is natively colorless) |
-| [MakeUp Ultra Fast](https://modrinth.com/shader/makeup-ultra-fast-shaders) | 9.5d | Blocks and held items via its vertex-lighting pipeline |
-| E-LITE | 5.1.1 | Same family as MakeUp |
+[Complementary](https://modrinth.com/shader/complementary-unbound) Unbound / Reimagined 
+[BSL](https://modrinth.com/shader/bsl-shaders) 
+[MakeUp Ultra Fast](https://modrinth.com/shader/makeup-ultra-fast-shaders) 
 
 Behavior shared by every supported pack:
 
@@ -192,19 +188,6 @@ Open the mod's config screen (Mods → Colorful Lighting → Config) to edit lig
 Editor overrides layer on top of resource-pack definitions. 2.3.x `colorful_lighting-client.toml` entity
 light levels migrate automatically on first run; corrupted config files are always backed up before a fresh
 one is written.
-
-## Changes over upstream 1.3.0
-
-- Merged Sodium/Iris compatibility layer (formerly a separate mod), inert when those mods are absent;
-  shader-pack tinting refactored into a plugin SPI with per-family implementations
-- Dynamic entity/item/held lights, the in-game light editor, item light definitions, and blockstate-specific
-  block colors are all fork additions
-- Many upstream defects fixed at the source: immediate light updates on place/break under any light engine,
-  correct trilinear sampling, emissive blocks fullbright again, ghost-light and torn-color fixes,
-  build-height sampling, thread-safety of config/staging publication, and more — see the commit history
-  (`2.0.0` through `2.4.x`) for the full list
-- One canonical hex color codec behind every surface (resource JSON, config, editor), with actionable
-  parse warnings
 
 ## Building
 
