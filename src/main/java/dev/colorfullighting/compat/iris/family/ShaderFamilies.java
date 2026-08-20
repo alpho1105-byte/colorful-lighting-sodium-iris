@@ -14,6 +14,7 @@ import java.util.List;
 public final class ShaderFamilies {
     private static final List<ShaderFamily> FAMILIES = List.of(
             new ComplementaryFamily(),
+            new BslFamily(),
             new MakeUpFamily()
     );
 

@@ -624,6 +624,63 @@ public final class PackedLightCompatTest {
         // and the plain MakeUp patch still omits the varying entirely
         assert !patchedMakeUp.contains("colorfulLightingSodiumCompat_Color");
 
+        // BSL family: fragment-stage lighting through GetLighting(albedo...), colorless
+        // hand light whose LEVEL becomes authoritative per hand, and dynamic entity
+        // lights anchored on the worldPos/lightmap locals.
+        String bslVertex = "#version 330 core\n"
+                + "attribute vec4 mc_Entity;\n"
+                + "void main() {\n}\n";
+        String bslFragment = "#version 330 core\n"
+                + "uniform int heldBlockLightValue, heldBlockLightValue2;\n"
+                + "vec3 blocklightCol = vec3(0.2, 0.1, 0.05);\n"
+                + "vec2 ApplyDynamicHandlight(vec2 lightmap, vec3 worldPos) {\n"
+                + "    float heldLightValue = max(float(heldBlockLightValue), float(heldBlockLightValue2));\n"
+                + "    lightmap.x = max(lightmap.x, heldLightValue / 15.0);\n"
+                + "    return lightmap;\n"
+                + "}\n"
+                + "void GetLighting(inout vec3 albedo, vec2 lightmap) {\n"
+                + "    albedo *= blocklightCol * lightmap.x;\n"
+                + "}\n"
+                + "void main() {\n"
+                + "\tvec2 lightmap = clamp(lmCoord, vec2(0.0), vec2(1.0));\n"
+                + "\tvec3 worldPos = ToWorld(viewPos);\n"
+                + "\tlightmap = ApplyDynamicHandlight(lightmap, worldPos);\n"
+                + "\tGetLighting(albedo.rgb, lightmap);\n"
+                + "}\n";
+        assert IrisShaderCompat.supports(bslVertex, bslFragment);
+        assert IrisShaderCompat.supportsVanillaTint(bslFragment);
+        String patchedBsl = IrisShaderCompat.patchFragment(bslFragment);
+        // per-hand level authority replaces the pack uniform only for authoritative hands
+        assert patchedBsl.contains(
+                "float heldLightValue = max(colorfulLightingSodiumCompat_HeldAuthority != 0"
+                        + " ? float(colorfulLightingSodiumCompat_HeldLevel) : float(heldBlockLightValue),"
+                        + " colorfulLightingSodiumCompat_HeldAuthority2 != 0"
+                        + " ? float(colorfulLightingSodiumCompat_HeldLevel2) : float(heldBlockLightValue2));");
+        // hue swap and dynamic hook precede the lighting call (first GetLighting(albedo
+        // occurrence is the call; the definition reads "GetLighting(inout")
+        assert patchedBsl.contains("colorfulLightingSodiumCompat_PackBlocklight = blocklightCol;");
+        assert patchedBsl.indexOf("blocklightCol = colorfulTint")
+                < patchedBsl.indexOf("GetLighting(albedo");
+        assert patchedBsl.contains("length(worldPos - dynLight.xyz)");
+        assert patchedBsl.contains("lightmap.x = max(lightmap.x, colorfulDynLm);");
+        assert patchedBsl.contains("uniform int colorfulLightingSodiumCompat_HeldAuthority;");
+        // the colorless hand boost gets its own hue: the pre-boost lightmap is
+        // captured at the handlight call, and the hand's share of the final lightmap
+        // is re-hued (emitter color when authoritative, pack warm hue otherwise) so a
+        // placed light's fringe color is never amplified into a saturated wash
+        assert patchedBsl.contains(
+                "float colorfulLightingSodiumCompat_PlacedLightmapX = lightmap.x;"
+                        + " lightmap = ApplyDynamicHandlight(lightmap, worldPos);");
+        assert patchedBsl.contains("float colorfulHandShare = clamp((lightmap.x"
+                + " - colorfulLightingSodiumCompat_PlacedLightmapX)");
+        assert patchedBsl.indexOf("colorfulHandShare") > patchedBsl.indexOf("blocklightCol = colorfulTint");
+        assert patchedBsl.indexOf("colorfulHandShare") < patchedBsl.indexOf("colorfulDynLightCount > 0".replace("colorfulDyn", "colorfulLightingSodiumCompat_Dyn"));
+        assert IrisShaderCompat.patchFragment(patchedBsl).equals(patchedBsl);
+        // family routing stays disjoint: BSL has no DoLighting, Complementary has no
+        // GetLighting(albedo - and the Complementary shell still patches with its own
+        // playerPos anchor (asserted above), not BSL's worldPos
+        assert !patchedFragment.contains("worldPos");
+
         // CompatMixinRouting and the mixin config must list exactly the same classes:
         // a mixin present in the json but missing from the routing table would only
         // surface at runtime through the warn-and-default fallback.

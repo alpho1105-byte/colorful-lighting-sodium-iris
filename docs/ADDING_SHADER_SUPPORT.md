@@ -18,6 +18,8 @@ dev.colorfullighting.compat.iris
     ├── ShaderPatchNames      ← every injected GLSL identifier (shared constants)
     ├── PatchToolkit          ← text surgery + shared GLSL snippets (tintSwapBlock…)
     ├── ComplementaryFamily   ← reference: fragment-stage lighting family
+    ├── BslFamily             ← reference: minimal fragment family (level-authority
+    │                            held light, parameterized dynamic-light anchors)
     └── MakeUpFamily          ← reference: vertex-stage lighting family
 ```
 
@@ -73,12 +75,26 @@ Two patch entry points call into this (via `IrisShaderCompat`):
    held-light value** so its `item.properties` definitions still work; when `1`, the
    mod's level/color are final (including "deliberately dark": level 0).
 
+   **Pitfall — colorless hand light:** if the pack's hand light is a plain lightmap
+   boost that inherits `blocklightCol` (BSL style), the placed-hue swap makes that
+   hue SPATIALLY VARYING, and the boost then amplifies a placed light's faint fringe
+   color into a saturated wash wherever the hand light dominates. Capture the
+   pre-boost lightmap coordinate at the pack's handlight call and re-hue the hand's
+   share (`BslFamily` shows the pattern: emitter hue when authoritative, the pack's
+   original hue otherwise via `packLightTintHelper`'s black fallback). The HeldColor
+   uniforms are non-zero only for an authoritative lit hand, which makes that one
+   expression cover every case.
+
 6. **Dynamic entity lights (optional).** Per-slot uniforms
-   `DynLight0..7`/`DynLightColor0..7`/`DynLightCount` exist; injecting the per-pixel
-   hook needs pack-specific anchors (a camera-relative position and a mutable
-   lightmap local in scope) — see `ComplementaryFamily.dynamicLightHook` for the
-   falloff semantics to replicate (level minus one per block, max-combined, hue as a
-   level-weighted blend).
+   `DynLight0..7`/`DynLightColor0..7`/`DynLightCount` exist, and
+   `PatchToolkit.dynamicLightHook(positionVar, lightmapXVar)` emits the whole
+   per-pixel hook (level minus one per block, max-combined, hue as a level-weighted
+   blend) — your family only supplies the pack's anchors: a camera-relative position
+   local and the mutable block-light lightmap coordinate in scope at the insertion
+   point, both verified to appear *before* the lighting call (see
+   `BslFamily.dynamicLightingSupported` for the minimal wiring, `ComplementaryFamily`
+   for the fuller one). Also inject `PatchToolkit.dynamicLightDeclarations()` and
+   `packLightTintHelper()` alongside.
 
 7. **Tests.** Shader-pack sources are copyrighted — **never commit them**. Add
    synthetic sources that mimic the pack's idioms to

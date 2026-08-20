@@ -9,16 +9,11 @@ import static dev.colorfullighting.compat.iris.family.PatchToolkit.heldColorDecl
 import static dev.colorfullighting.compat.iris.family.PatchToolkit.insertAfterVersion;
 import static dev.colorfullighting.compat.iris.family.PatchToolkit.lineIndent;
 import static dev.colorfullighting.compat.iris.family.PatchToolkit.lineStart;
-import static dev.colorfullighting.compat.iris.family.PatchToolkit.lumaExpression;
-import static dev.colorfullighting.compat.iris.family.PatchToolkit.peakExpression;
-import static dev.colorfullighting.compat.iris.family.PatchToolkit.tintExpression;
 import static dev.colorfullighting.compat.iris.family.PatchToolkit.tintSwapBlock;
-import static dev.colorfullighting.compat.iris.family.ShaderPatchNames.DYN_LIGHT_NAME;
 import static dev.colorfullighting.compat.iris.family.ShaderPatchNames.HELD_AUTHORITY_NAME;
 import static dev.colorfullighting.compat.iris.family.ShaderPatchNames.HELD_COLOR_NAME;
 import static dev.colorfullighting.compat.iris.family.ShaderPatchNames.HELD_HELPER_NAME;
 import static dev.colorfullighting.compat.iris.family.ShaderPatchNames.HELD_LEVEL_NAME;
-import static dev.colorfullighting.compat.iris.family.ShaderPatchNames.MAX_DYNAMIC_LIGHTS;
 import static dev.colorfullighting.compat.iris.family.ShaderPatchNames.PACK_LIGHT_NAME;
 import static dev.colorfullighting.compat.iris.family.ShaderPatchNames.VARYING_NAME;
 
@@ -87,15 +82,7 @@ final class ComplementaryFamily implements ShaderFamily {
         String dynamicHook = "";
         int heldLighting = patched.indexOf(HELD_LIGHTING_DEFINITION);
         if (heldLighting >= 0) {
-            String heldHelper = heldColorDeclarations()
-                    + "vec3 " + HELD_HELPER_NAME + "(vec3 heldColor) {\n"
-                    + "\tfloat heldPeak = " + peakExpression("heldColor") + ";\n"
-                    + "\tif (heldPeak < 0.001) return " + PACK_LIGHT_NAME + ";\n"
-                    + "\tvec3 heldTint = " + tintExpression("heldColor") + ";\n"
-                    + "\tfloat heldTintLuma = " + lumaExpression("heldTint") + ";\n"
-                    + "\tfloat packLuma = " + lumaExpression(PACK_LIGHT_NAME) + ";\n"
-                    + "\treturn heldTint * (packLuma / max(heldTintLuma, 0.0001));\n"
-                    + "}\n";
+            String heldHelper = heldColorDeclarations() + PatchToolkit.packLightTintHelper();
             patched = patched.substring(0, heldLighting)
                     + heldHelper
                     + patched.substring(heldLighting);
@@ -119,9 +106,9 @@ final class ComplementaryFamily implements ShaderFamily {
             patched = patchHeldAuthority(patched);
             if (dynamicLightingSupported(patched)) {
                 patched = patched.substring(0, patched.indexOf(HELD_LIGHTING_DEFINITION))
-                        + dynamicLightDeclarations()
+                        + PatchToolkit.dynamicLightDeclarations()
                         + patched.substring(patched.indexOf(HELD_LIGHTING_DEFINITION));
-                dynamicHook = dynamicLightHook();
+                dynamicHook = PatchToolkit.dynamicLightHook("playerPos", "lmCoordM.x");
                 IrisPatchState.recordDynamicLights();
             }
         }
@@ -190,63 +177,5 @@ final class ComplementaryFamily implements ShaderFamily {
         return source.contains("lmCoordM") && source.contains("playerPos");
     }
 
-    /** One vec4 uniform per light slot: Iris's array uniforms upload a single vec4. */
-    private static String dynamicLightDeclarations() {
-        StringBuilder declarations = new StringBuilder();
-        declarations.append("uniform int ").append(DYN_LIGHT_NAME).append("Count;\n");
-        for (int i = 0; i < MAX_DYNAMIC_LIGHTS; i++) {
-            declarations.append("uniform vec4 ").append(DYN_LIGHT_NAME).append(i).append(";\n");
-            declarations.append("uniform vec4 ").append(DYN_LIGHT_NAME).append("Color").append(i).append(";\n");
-        }
-        return declarations.toString();
-    }
 
-    /**
-     * Lightmap-equivalent entity lights: per-pixel continuous version of the block
-     * engine's falloff (level minus one per block of distance, max-combined), merged
-     * into the lightmap coordinate the pack shades with. Hue is a continuous weighted
-     * blend of every in-range entity light; selecting the strongest light's hue would
-     * create a hard boundary wherever two differently colored lights have equal level.
-     * The pack's lmCoordM.x equals blockLightLevel / 15, so a level-N entity light
-     * renders exactly as bright as a placed level-N source - LambDynamicLights
-     * semantics, without the block grid.
-     */
-    private static String dynamicLightHook() {
-        StringBuilder hook = new StringBuilder();
-        hook.append("\tif (").append(DYN_LIGHT_NAME).append("Count > 0) {\n");
-        hook.append("\t\tvec4 colorfulDynLights[").append(MAX_DYNAMIC_LIGHTS).append("] = vec4[](");
-        for (int i = 0; i < MAX_DYNAMIC_LIGHTS; i++) {
-            if (i > 0) hook.append(", ");
-            hook.append(DYN_LIGHT_NAME).append(i);
-        }
-        hook.append(");\n");
-        hook.append("\t\tvec4 colorfulDynColorArr[").append(MAX_DYNAMIC_LIGHTS).append("] = vec4[](");
-        for (int i = 0; i < MAX_DYNAMIC_LIGHTS; i++) {
-            if (i > 0) hook.append(", ");
-            hook.append(DYN_LIGHT_NAME).append("Color").append(i);
-        }
-        hook.append(");\n");
-        hook.append("\t\tfloat colorfulDynLevel = 0.0;\n"
-                + "\t\tvec3 colorfulDynColorSum = vec3(0.0);\n"
-                + "\t\tfloat colorfulDynColorWeight = 0.0;\n"
-                + "\t\tfor (int i = 0; i < " + DYN_LIGHT_NAME + "Count; i++) {\n"
-                + "\t\t\tvec4 dynLight = colorfulDynLights[i];\n"
-                + "\t\t\tfloat dynLevelI = dynLight.w - length(playerPos - dynLight.xyz);\n"
-                + "\t\t\tif (dynLevelI > 0.0) {\n"
-                + "\t\t\t\tvec3 dynColor = colorfulDynColorArr[i].rgb;\n"
-                + "\t\t\t\tcolorfulDynLevel = max(colorfulDynLevel, dynLevelI);\n"
-                + "\t\t\t\tcolorfulDynColorSum += dynColor * dynLevelI;\n"
-                + "\t\t\t\tcolorfulDynColorWeight += dynLevelI;\n"
-                + "\t\t\t}\n"
-                + "\t\t}\n"
-                + "\t\tif (colorfulDynLevel > 0.0) {\n"
-                + "\t\t\tvec3 colorfulDynColor = colorfulDynColorSum / colorfulDynColorWeight;\n"
-                + "\t\t\tfloat colorfulDynLm = min(colorfulDynLevel / 15.0, 1.0);\n"
-                + "\t\t\tfloat colorfulDynW = colorfulDynLm / max(colorfulDynLm + lmCoordM.x, 0.0001);\n"
-                + "\t\t\tblocklightCol = mix(blocklightCol, " + HELD_HELPER_NAME + "(colorfulDynColor), colorfulDynW);\n"
-                + "\t\t\tlmCoordM.x = max(lmCoordM.x, colorfulDynLm);\n"
-                + "\t\t}\n"
-                + "\t}\n");
-        return hook.toString();
-    }
 }
